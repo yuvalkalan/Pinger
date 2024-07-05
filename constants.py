@@ -32,8 +32,8 @@ class Modifiers(enum.Enum):
 
 class Config(enum.StrEnum):
     TEXT_SIZE = 'text size'
-    SLEEP_TIMER = 'ping sleep timer (sec)'
-    TIMEOUT = 'ping timeout (sec)'
+    SLEEP_TIMER = 'ping sleep timer (ms)'
+    TIMEOUT = 'ping timeout (ms)'
     BUFFER_SIZE = 'ping buffer size (bytes)'
     DF_FLAG = 'ping df flag (T/F)'
     TTL = 'ping ttl'
@@ -45,13 +45,25 @@ class Config(enum.StrEnum):
 class Default(enum.IntEnum):
     STATISTICS_CAPACITY = 100
     TEXT_SIZE = 12
-    PING_SLEEP_TIMER = 1.0
-    PING_TIMEOUT = 2.0
+    PING_SLEEP_TIMER = 1000
+    PING_TIMEOUT = 4000
     PING_BUFFER_SIZE = 32
     PING_DF_FLAG = 0
     PING_TTL = 128
     NUM_OF_TABLES = 1
     DOCK_TIME = 100
+
+
+class RangeOf(enum.Enum):
+    STATISTICS_CAPACITY = (1, 500)
+    TEXT_SIZE = (1, 40)
+    PING_SLEEP_TIMER = (500, 10000)
+    PING_TIMEOUT = (500, 10000)
+    PING_BUFFER_SIZE = (32, 65527)
+    PING_DF_FLAG = (0, 1)
+    PING_TTL = (1, 255)
+    NUM_OF_TABLES = (1, 5)
+    DOCK_TIME = (0, 1000)
 
 
 class Color(enum.StrEnum):
@@ -114,3 +126,13 @@ DEFAULT_SETTINGS = {Config.TEXT_SIZE: Default.TEXT_SIZE,
                     Config.STATISTICS_CAPACITY: Default.STATISTICS_CAPACITY,
                     Config.NUM_OF_TABLES: Default.NUM_OF_TABLES,
                     Config.DOCK_TIME: Default.DOCK_TIME}
+
+RANGE_OF_SETTINGS = {Config.TEXT_SIZE: RangeOf.TEXT_SIZE,
+                     Config.SLEEP_TIMER: RangeOf.PING_SLEEP_TIMER,
+                     Config.TIMEOUT: RangeOf.PING_TIMEOUT,
+                     Config.BUFFER_SIZE: RangeOf.PING_BUFFER_SIZE,
+                     Config.DF_FLAG: RangeOf.PING_DF_FLAG,
+                     Config.TTL: RangeOf.PING_TTL,
+                     Config.STATISTICS_CAPACITY: RangeOf.STATISTICS_CAPACITY,
+                     Config.NUM_OF_TABLES: RangeOf.NUM_OF_TABLES,
+                     Config.DOCK_TIME: RangeOf.DOCK_TIME}

@@ -1,30 +1,57 @@
-import tkinter as tk
+# import time, pyautogui
+# import PySimpleGUI as sg
+# import multiprocessing
+#
+#
+# def KeepUI():
+#     sg.theme('Dark')
+#     layout = [
+#         [sg.Text(
+#             'Keep-Me-Up is now running.\nYou can keep it minised, and it will continue running.\nClose it to disable it.')]
+#     ]
+#     window = sg.Window('Keep-Me-Up', layout)
+#
+#     p2 = multiprocessing.Process(target=dontsleep)
+#     p2.start()
+#
+#     while True:
+#         event, values = window.read()
+#         if event == sg.WIN_CLOSED:  # if user closes window or clicks cancel
+#             if p2.is_alive():
+#                 p2.terminate()
+#             break
+#
+#
+# def dontsleep():
+#     while True:
+#         pyautogui.press('volumedown')
+#         time.sleep(1)
+#         pyautogui.press('volumeup')
+#         time.sleep(300)
+#
+#
+# if __name__ == '__main__':
+#     p1 = multiprocessing.Process(target=KeepUI)
+#     p1.start()
 
-root = tk.Tk()
-root.grid_rowconfigure(0, weight=1)
-root.grid_columnconfigure(0, weight=1)
-
-frame = tk.Frame(root, bg='black')
-frame.grid(row=0, column=0, sticky=tk.NSEW)
-frame.grid_rowconfigure(0, weight=1)
-frame.grid_columnconfigure(0, weight=1)
+from tkinter import *
+from tkinter.ttk import *
 
 
-pd1 = tk.PanedWindow(frame, orient=tk.HORIZONTAL, bg='black')
-pd1.grid(row=0, column=0, sticky=tk.NSEW)
-
-l_frame = tk.Frame(pd1)
-pd1.add(l_frame)
-
-left_label = tk.Label(l_frame, text="left")
-left_label.grid(row=0, column=0, sticky=tk.EW)
-
-for i in range(10):
-    t_frame = tk.Frame(pd1)
-    pd1.add(t_frame)
-
-    top_label = tk.Label(t_frame, text="left")
-    top_label.grid(row=0, column=0, sticky=tk.EW)
+def main():
+    root = Tk()
+    tree = Treeview(root, selectmode="extended", columns=("A", "B"))
+    tree.pack(expand=YES, fill=BOTH)
+    tree.heading("#0", text="C/C++ compiler")
+    tree.column("#0", minwidth=0, width=100, stretch=NO)
+    tree.heading("A", text="A")
+    tree.column("A", minwidth=0, width=200, stretch=NO)
+    tree.heading("B", text="B")
+    tree.column("B", minwidth=0, width=300)
+    btn = Button(root, text='check', command=lambda: print(tree.column('A')))
+    btn.pack()
+    root.mainloop()
 
 
-tk.mainloop()
+if __name__ == '__main__':
+    main()

@@ -61,10 +61,7 @@ class Settings:
             with open(SETTINGS_FILE, 'r') as my_file:
                 for line in my_file:
                     key, value = line.strip('\n').split('=')
-                    try:
-                        items[key] = int(value)
-                    except ValueError:
-                        items[key] = float(value)
+                    items[key] = int(value)
         except (OSError, ValueError):
             items = DEFAULT_SETTINGS
         return items
@@ -120,7 +117,7 @@ class Settings:
         return 'ping -n 1 -l {} {} -i {} -w {}'.format(self.ping_buffer_size,
                                                        "-f" if self.ping_df_flag else "",
                                                        self.ping_ttl,
-                                                       self.ping_timeout * 1000)
+                                                       self.ping_timeout)
 
     @property
     def num_of_tables(self):
@@ -165,7 +162,7 @@ settings = Settings()
 
 
 class Text:
-    def __init__(self, master, text, pos, color=DEF_TEXT_COLOR, bg_color=DEF_TEXT_BG_COLOR,
+    def __init__(self, master: tk.Misc, text: str, pos, color=DEF_TEXT_COLOR, bg_color=DEF_TEXT_BG_COLOR,
                  size=Default.TEXT_SIZE.value):
         self._text = text
         self._color = color
@@ -227,7 +224,7 @@ class Text:
 
 
 class Button(Text):
-    def __init__(self, master, text, pos, func, color=DEF_TEXT_COLOR, bg_color=DEF_TEXT_BG_COLOR,
+    def __init__(self, master: tk.Misc, text: str, pos, func, color=DEF_TEXT_COLOR, bg_color=DEF_TEXT_BG_COLOR,
                  size=Default.TEXT_SIZE.value):
         super(Button, self).__init__(master, text, pos, color, bg_color, size)
         self._func = func
@@ -235,7 +232,8 @@ class Button(Text):
 
 
 class InputBox(Text):
-    def __init__(self, master, text, pos, color=Color.BLACK, bg_color=DEF_TEXT_BG_COLOR, size=Default.TEXT_SIZE.value):
+    def __init__(self, master: tk.Misc, text: str, pos, color=Color.BLACK, bg_color=DEF_TEXT_BG_COLOR,
+                 size=Default.TEXT_SIZE.value):
         super(InputBox, self).__init__(master, text, pos, color, bg_color, size)
         self._widget = tk.Entry(master, fg=Color.GRAY, bg=bg_color, font=self._font)
         self._widget.insert(0, text)
@@ -274,8 +272,8 @@ class Table:
         master.add(self._frame, stretch="always")
         self._frame.grid_columnconfigure(0, weight=1)
         self._frame.grid_rowconfigure(0, weight=1)
-        # self._frame.grid(row=row, column=column, sticky=tk.NSEW)
         # create tree
+        self._titles = titles
         self._tree = ttk.Treeview(self._frame, columns=titles, show='headings')
         for column in titles:
             self._tree.heading(column, text=column)
@@ -291,8 +289,13 @@ class Table:
         self._menu.add_command(label='backward', command=self._backward_cmd)
         self._tree.bind('<Button-3>', self._popup_menu)
         self._tree.bind('<FocusOut>', lambda e: self._tree.selection_set([]))
-
         self._have_changed = False
+        self._master.after(0, self._set_size)
+
+    def _set_size(self):
+        length = self._tree.winfo_width()
+        for title in self._titles:
+            self._tree.column(title, width=length//4)
 
     @property
     def have_changed(self):
@@ -489,7 +492,7 @@ class PingTable(Table):
             self._submit_updates(*line.values)
             line.add_data_to_window()
         self._tree.selection_set(selections)
-        self._master.after(int(500 * settings.ping_sleep_timer), self._check_pingers)
+        self._master.after(settings.ping_sleep_timer, self._check_pingers)
 
     @property
     def items(self):
@@ -716,23 +719,20 @@ class EditRow:
             self._my_window.destroy()
 
 
-class FloatInputbox(InputBox):
-    def __init__(self, master, text, pos, color=Color.BLACK, bg_color=DEF_TEXT_BG_COLOR, size=Default.TEXT_SIZE.value,
-                 max_len=0):
+class FloatInputbox(Text):
+    def __init__(self, master: tk.Misc, text: str, pos, from_, to, jump_by=1, color=Color.BLACK,
+                 bg_color=DEF_TEXT_BG_COLOR, size=Default.TEXT_SIZE.value):
         super(FloatInputbox, self).__init__(master, text, pos, color, bg_color, size)
+        self._from = from_
+        self._to = to
         validate_cmd = (master.register(self.validate), '%d', '%i', '%P', '%s', '%S', '%v', '%V', '%W')
-        self._widget.config(validate='key', validatecommand=validate_cmd)
-        self._changed = True
-        self._max_len = max_len
-        self._widget.config(foreground=self._color)
+        self._widget = tk.Spinbox(master, from_=from_, to=to, increment=jump_by, fg=color, font=self._font,
+                                  bd=0, bg=bg_color, validate='key', validatecommand=validate_cmd, wrap=True)
+        self._set_text(text)
 
     def validate(self, action, index, value_if_allowed: str, prior_value, text, validation_type, trigger_type,
                  widget_name):
         if value_if_allowed:
-            if self._max_len:
-                if value_if_allowed.count('.') != 0:
-                    if len(str(value_if_allowed).split('.')[-1]) > self._max_len:
-                        return False
             try:
                 float(value_if_allowed)
             except ValueError:
@@ -743,13 +743,18 @@ class FloatInputbox(InputBox):
     def value(self):
         v = self._widget.get()
         if v:
-            return float(v)
+            return max(min(float(v), self._to), self._from)
         return None
+
+    def _set_text(self, text: str):
+        self._widget.delete(0, tk.END)
+        self._widget.insert(0, text)
 
 
 class IntInputBox(FloatInputbox):
-    def __init__(self, master, text, pos, color=Color.BLACK, bg_color=DEF_TEXT_BG_COLOR, size=Default.TEXT_SIZE.value):
-        super(IntInputBox, self).__init__(master, text, pos, color, bg_color, size)
+    def __init__(self, master: tk.Misc, text: str, pos, from_, to, jump_by=1, color=Color.BLACK,
+                 bg_color=DEF_TEXT_BG_COLOR, size=Default.TEXT_SIZE.value):
+        super(IntInputBox, self).__init__(master, text, pos, from_, to, jump_by, color, bg_color, size)
 
     def validate(self, action, index, value_if_allowed, prior_value, text, validation_type, trigger_type, widget_name):
         if value_if_allowed:
@@ -763,17 +768,21 @@ class IntInputBox(FloatInputbox):
     def value(self):
         v = self._widget.get()
         if v:
-            return int(v)
+            return max(min(int(v), self._to), self._from)
         return None
 
 
 class BoolInputBox(IntInputBox):
-    def __init__(self, master, text, pos, color=Color.BLACK, bg_color=DEF_TEXT_BG_COLOR, size=Default.TEXT_SIZE.value):
-        super(IntInputBox, self).__init__(master, text, pos, color, bg_color, size)
+    def __init__(self, master: tk.Misc, text: str, pos, color=Color.BLACK,
+                 bg_color=DEF_TEXT_BG_COLOR, size=Default.TEXT_SIZE.value):
+        super(IntInputBox, self).__init__(master, text, pos, None, None, 1, color, bg_color, size)
+        self._values = ['True', 'False']
+        self._widget.config(values=self._values)
+        self._set_text(text)
 
     def validate(self, action, index, value_if_allowed, prior_value, text, validation_type, trigger_type, widget_name):
         if value_if_allowed:
-            if value_if_allowed.lower() not in ['t', 'f']:
+            if value_if_allowed not in ['True', 'False']:
                 return False
         return True
 
@@ -781,7 +790,7 @@ class BoolInputBox(IntInputBox):
     def value(self):
         v = self._widget.get()
         if v:
-            return 1 if v.lower() == 't' else 0
+            return 1 if bool(v) else 0
         return None
 
 
@@ -815,12 +824,11 @@ class SettingsWindow:
             self._value_frame.grid_rowconfigure(i, weight=1)
 
             Text(self._param_frame, key, (i, 0)).draw(padx=2, pady=2, sticky=tk.EW)
-            if key in [Config.TIMEOUT, Config.SLEEP_TIMER]:
-                param_value = FloatInputbox(self._value_frame, value, (i, 0), max_len=3)
-            elif key in [Config.DF_FLAG]:
-                param_value = BoolInputBox(self._value_frame, 'T' if value else 'F', (i, 0))
+            if key in [Config.DF_FLAG]:
+                param_value = BoolInputBox(self._value_frame, str(bool(value)), (i, 0))
             else:
-                param_value = IntInputBox(self._value_frame, value, (i, 0))
+                from_, to = RANGE_OF_SETTINGS[key].value
+                param_value = IntInputBox(self._value_frame, value, (i, 0), from_, to)
             param_value.draw(padx=2, pady=2, sticky=tk.EW)
             self._items[key] = param_value
 
@@ -1041,11 +1049,11 @@ def pinger_thread(table_line: PingTableLine):
         time_str = datetime.datetime.now().strftime('%d.%m.%y %H:%M:%S')
         table_line.add_data(f'{time_str} -> {output}', color)
         table_line.update_line(color)
-        time.sleep(settings.ping_sleep_timer)
+        time.sleep(settings.ping_sleep_timer / 1000)
         while table_line.pause and settings.running and table_line.is_alive:
             color = Color.GRAY
             table_line.update_line(color)
-            time.sleep(settings.ping_sleep_timer)
+            time.sleep(settings.ping_sleep_timer / 1000)
 
 
 def ask_for_save(tables, main_menu):
