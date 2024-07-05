@@ -80,7 +80,8 @@ class Settings:
 
     def _set_config(self):
         self._tree_head_stl = ttk.Style()
-        self._tree_head_stl.configure("Treeview.Heading", font=(DEF_TEXT_FONT, self.text_size * 2, 'bold'))
+        self._tree_head_stl.configure("Treeview.Heading",
+                                      font=(DEF_TEXT_FONT, self.text_size * TEXT_HEAD_RATIO, 'bold'))
 
         self._tree_body_stl = ttk.Style()
         self._tree_body_stl.configure("Treeview", font=(DEF_TEXT_FONT, self.text_size, 'bold'),
@@ -283,6 +284,7 @@ class Table:
         self._tree = ttk.Treeview(self._frame, columns=titles, show='headings')
         for column in titles:
             self._tree.heading(column, text=column)
+            self._tree.column(column, minwidth=0)
         self._tree.grid(row=0, column=0, sticky=tk.NSEW)
         # add a scrollbar
         self._scrollbar = ttk.Scrollbar(self._frame, orient=tk.VERTICAL, command=self._tree.yview)
@@ -293,6 +295,7 @@ class Table:
         self._menu.add_command(label='forward', command=self._forward_cmd)
         self._menu.add_command(label='backward', command=self._backward_cmd)
         self._tree.bind('<Button-3>', self._popup_menu)
+        self._tree.bind('<FocusOut>', lambda e: self._tree.selection_set([]))
 
         self._have_changed = False
 
@@ -536,7 +539,7 @@ class PingTableLine:
         self._iid = iid
 
         self._my_window: Optional[tk.Toplevel] = None
-        self._text = None
+        self._text: Optional[tk.Text] = None
         self._vsb = None
         self._check_btn_v = None
         self._check_button = None
@@ -647,6 +650,9 @@ class PingTableLine:
             self._my_window.protocol('WM_DELETE_WINDOW', self.close_window)
 
             self._text = tk.Text(self._my_window, height=6, width=40)
+            self._text.tag_config(Color.RED, background=Color.RED)
+            self._text.tag_config(Color.YELLOW, background=Color.YELLOW)
+            self._text.tag_config(Color.GREEN, background=Color.GREEN)
             self._vsb = tk.Scrollbar(self._my_window, orient="vertical", command=self._text.yview)
             self._text.configure(yscrollcommand=self._vsb.set)
             self._vsb.pack(side="right", fill="y")
@@ -665,9 +671,9 @@ class PingTableLine:
     def add_data_to_window(self):
         while self._have_data:
             data, color = self._data.pop(0)
-            self._text.insert("end", data+'\n')
+            self._text.insert(tk.END, data+'\n', color)
             if self._check_btn_v.get():
-                self._text.see("end")
+                self._text.see(tk.END)
 
     def kill(self):
         self._is_alive = False
@@ -790,6 +796,9 @@ class SettingsWindow:
         self._my_window.grid_columnconfigure(1, weight=1)
         self._my_window.grid_rowconfigure(0, weight=1)
         self._my_window.protocol('WM_DELETE_WINDOW', self._close_cmd)
+        self._my_window.bind('<Return>', self._submit_cmd)
+        self._my_window.bind('<Escape>', self._close_cmd)
+        self._my_window.bind('<Delete>', self._reset_cmd)
 
         self._param_frame = tk.Frame(self._my_window, bg=Color.BLACK)
         self._param_frame.grid(row=0, column=0, sticky=tk.NSEW)
@@ -827,11 +836,11 @@ class SettingsWindow:
         self._reset_btn = Button(self._buttons_frame, 'reset', (0, 2), self._reset_cmd)
         self._reset_btn.draw(sticky=tk.EW)
 
-    def _close_cmd(self):
+    def _close_cmd(self, *_):
         self._menu.window_closed()
         self._my_window.destroy()
 
-    def _submit_cmd(self):
+    def _submit_cmd(self, *_):
         new_settings = {key: value.value for key, value in self._items.items()}
         for key in new_settings:
             if new_settings[key] is None:
@@ -839,7 +848,7 @@ class SettingsWindow:
         settings.set_settings(new_settings)
         self._close_cmd()
 
-    def _reset_cmd(self):
+    def _reset_cmd(self, *_):
         settings.reset_settings()
         self._close_cmd()
 
@@ -882,6 +891,7 @@ class Menu:
                 table.reset()
             settings.reset_adder()
             self._file_menu.entryconfig('save', state='disable')
+            self._master.title(DEF_SCREEN_TITLE)
 
     def open_file_cmd(self, filename=''):
         last_file_name = self._file_name
@@ -907,6 +917,7 @@ class Menu:
                     for table in self._tables:
                         table.have_changed = False
                     self._file_menu.entryconfig('save', state='normal')
+                    self._master.title(f'{self._file_name} - pinger++')
                     return True
                 except Exception as e:
                     msgbox.showerror('Error!', f'can\'t open file! {e}')
@@ -935,6 +946,7 @@ class Menu:
     def save_as_file_cmd(self):
         self._file_name = fd.asksaveasfilename(title='Save File', filetypes=FILE_TYPES, defaultextension='.pngr')
         if self.save_file_cmd():
+            self._master.title(f'{self._file_name} - pinger++')
             self._file_menu.entryconfig('save', state='normal')
             return True
         return False

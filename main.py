@@ -13,7 +13,7 @@ def do_quit(root, tables, main_menu):
 def init_root():
     root = tk.Tk()
     # root.geometry(SCREEN_SIZE)
-    root.title(SCREEN_TITLE)
+    root.title(DEF_SCREEN_TITLE)
     return root
 
 

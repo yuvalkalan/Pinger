@@ -78,7 +78,7 @@ DEF_TEXT_FONT = 'Helvetica'
 DEF_TEXT_COLOR = None
 DEF_TEXT_BG_COLOR = None
 SCREEN_SIZE = '1000x500'
-SCREEN_TITLE = 'BetterPinger'
+DEF_SCREEN_TITLE = 'Untitled - Pinger++'
 
 ERROR_MSGS = ['destination host unreachable',
               'request timed out',
@@ -93,6 +93,7 @@ FILE_TYPES = (('Pinger Files (*.pngr)', '*.pngr'), ('All Files (*.*)', '*.*'))
 
 
 SETTINGS_FILE = 'settings.txt'
+TEXT_HEAD_RATIO = 1
 
 MODIFIER_KEYS = {Modifiers.SHIFT: 1,
                  Modifiers.CAPS_LOCK: 2,
