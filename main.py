@@ -32,7 +32,8 @@ ERROR_MSGS = ['destination host unreachable',
               'general failure',
               'ttl expired in transit',
               'destination net unreachable',
-              'destination port unreachable']
+              'destination port unreachable',
+              'packet needs to be fragmented but df set']
 FILE_TYPES = (('Pinger Files (*.pngr)', '*.pngr'), ('All Files (*.*)', '*.*'))
 
 SHIFT = 'SHIFT'
@@ -48,14 +49,26 @@ SCROLL_LOCK = 'SCROLL_LOCK'
 MODIFIER_KEYS = {SHIFT: 1, CAPS_LOCK: 2, CTRL: 4, MUN_LOCK: 8, SCROLL_LOCK: 32, MOUSE_LEFT: 256, MOUSE_MID: 512,
                  MOUSE_RIGHT: 1048, LEFT_ALT: 131072, RIGHT_ALT: 131080}
 
+KEYCODE_ESCAPE = 27
+KEYCODE_DELETE = 46
+
 DOCK_PARAM = 100
 
 CALCULATING = 'Calculating...'
 ONLINE = 'Online'
 OFFLINE = 'Offline'
+PAUSED = 'Paused'
 
 SCROLL_SENSITIVITY = 120
-STATISTICS_AMOUNT = 100
+STATISTICS_CAPACITY = 100
+
+PING_SLEEP_TIMER = 1
+PING_TIMEOUT = 2
+PING_BUFFER_SIZE = 32
+PING_DF_FLAG = False
+PING_TTL = 128
+
+PING_COMMAND = f'ping -n 1 -l {PING_BUFFER_SIZE} {"-f" if PING_DF_FLAG else""} -i {PING_TTL} -w {PING_TIMEOUT*1000}'
 
 
 class Settings:
@@ -175,7 +188,7 @@ class Table:
         # make table resizable
         master.grid_rowconfigure(row, weight=1)
         self._master = master
-        self._frame = tk.Frame(master, bg='red')
+        self._frame = tk.Frame(master)
         self._frame.grid_columnconfigure(0, weight=1)
         self._frame.grid_rowconfigure(0, weight=1)
         self._frame.grid(row=row, column=column, sticky=tk.NSEW)
@@ -191,7 +204,6 @@ class Table:
         self._menu = tk.Menu(self._frame, tearoff=False)
         self._menu.add_command(label='remove', command=self._remove_cmd)
         self._menu.add_command(label='edit name', command=self._edit_name_cmd)
-        self._menu.add_command(label='pause', command=self._pause_cmd)
         self._menu.add_command(label='forward', command=self._forward_cmd)
         self._menu.add_command(label='backward', command=self._backward_cmd)
         self._tree.bind('<Button-3>', lambda e: self._menu.tk_popup(e.x_root, e.y_root))
@@ -208,9 +220,6 @@ class Table:
     def _edit_name_cmd(self):
         pass
 
-    def _pause_cmd(self):
-        pass
-
     def _forward_cmd(self):
         pass
 
@@ -219,126 +228,6 @@ class Table:
 
     def add(self, line):
         return self._tree.insert('', tk.END, values=line)
-
-
-class Statistics:
-    def __init__(self):
-        self._values = []
-        self._index = 0
-
-    def __iadd__(self, other):
-        value = 1 if other else 0
-        if len(self._values) < STATISTICS_AMOUNT:
-            self._values.append(value)
-        else:
-            self._values[self._index] = value
-            self._index = (self._index + 1) % len(self._values)
-        return self
-
-    @property
-    def value(self):
-        if self._values:
-            return str(round((sum(self._values) / len(self._values)) * 100)).zfill(3) + '%'
-        return '???%'
-
-
-class PingTableLine:
-    def __init__(self, root, table, host_name, ip_address, index):
-        self._root = root
-        self._table = table
-        self._host_name = host_name
-        self._ip_address = ip_address
-        self._index = index
-
-        self._my_window: Optional[tk.Toplevel] = None
-        self._data: List[Tuple[str, COLOR]] = []
-
-        self._color = None
-        self._statistics = Statistics()
-        self._status = CALCULATING
-        self._last_status_change = datetime.datetime.now()
-        self._is_alive = True
-
-    @property
-    def _have_window(self):
-        return self._my_window is not None
-
-    @property
-    def _have_data(self):
-        return self._data != []
-
-    @property
-    def host_name(self):
-        return self._host_name
-
-    @property
-    def ip_address(self):
-        return self._ip_address
-
-    @property
-    def status(self):
-        if self._status is not CALCULATING:
-            return f'{self._status} since ' + self._last_status_change.strftime('%d.%m.%y, %H:%M:%S')
-        return CALCULATING
-
-    @status.setter
-    def status(self, status):
-        if self._status != status:
-            self._status = status
-            self._last_status_change = datetime.datetime.now()
-
-    @property
-    def statistics(self):
-        return self._statistics.value
-
-    @property
-    def is_alive(self):
-        return self._is_alive
-
-    @property
-    def values(self):
-        return self._index, self._color, self._host_name, self._ip_address, self.status, self.statistics
-
-    def add_data(self, data, color):
-        if self._have_window:
-            self._data.append((data, color))
-
-    def update_line(self, color):
-        """
-        מעדכן נתונים
-        :param color:
-        :return:
-        """
-        self._color = color
-        if color == GREEN:
-            if self._status == OFFLINE or CALCULATING:
-                self.status = ONLINE
-            self._statistics += True
-        else:
-            if self._status == ONLINE or CALCULATING:
-                self.status = OFFLINE
-            self._statistics += False
-
-    def create_window(self):
-        if not self._have_window:
-            self._my_window = tk.Toplevel(self._root, bg=GRAY)
-            self._my_window.geometry('750x250')
-            self._my_window.title(f'{self.host_name} ({self.ip_address})')
-            self._my_window.protocol('WM_DELETE_WINDOW', self.close_window)
-        self._my_window.focus_set()
-
-    def close_window(self):
-        self._my_window.destroy()
-        self._my_window = None
-        self._data = []
-
-    def add_data_to_window(self):
-        while self._have_data:
-            data, color = self._data.pop(0)
-            tk.Label(self._my_window, text=data, fg=color, bg=GRAY).pack(anchor=tk.W)
-
-    def kill(self):
-        self._is_alive = False
 
 
 class PingTable(Table):
@@ -355,6 +244,8 @@ class PingTable(Table):
         self._tree.bind('<Double-Button-1>', self._open_sub_window)
         self._tree.bind('<KeyPress>', self._check_keypress)
 
+        self._menu.add_command(label='pause/resume', command=self._pause_cmd)
+
         self._have_changed = False
 
     @property
@@ -364,6 +255,10 @@ class PingTable(Table):
     @have_changed.setter
     def have_changed(self, value):
         self._have_changed = value
+
+    def _pause_cmd(self):
+        for iid in self._tree.selection():
+            self._item_indexes[iid].pause = not self._item_indexes[iid].pause
 
     def _remove_cmd(self):
         for iid in self._tree.selection():
@@ -383,6 +278,12 @@ class PingTable(Table):
         pressed_keys = check_keyboard(event)
         if event.keycode == ord('A') and pressed_keys[CTRL]:
             self._tree.selection_set(self._tree.get_children())
+        elif event.keycode == KEYCODE_ESCAPE:
+            self._tree.selection_set([])
+        elif event.keycode == KEYCODE_DELETE:
+            self._remove_cmd()
+        else:
+            print(event)
 
     def add(self, host_name_and_ip_address):
         name, ip = host_name_and_ip_address
@@ -419,11 +320,158 @@ class PingTable(Table):
             self._submit_updates(*line.values)
             line.add_data_to_window()
         self._tree.selection_set(selections)
-        self._master.after(100, self._check_pingers)
+        self._master.after(500 * PING_SLEEP_TIMER, self._check_pingers)
 
     @property
     def items(self):
         return [(line.host_name, line.ip_address) for line in self._item_indexes.values()]
+
+
+class Statistics:
+    def __init__(self):
+        self._values = []
+        self._index = 0
+
+    def __iadd__(self, other):
+        value = 1 if other else 0
+        if len(self._values) < STATISTICS_CAPACITY:
+            self._values.append(value)
+        else:
+            self._values[self._index] = value
+            self._index = (self._index + 1) % len(self._values)
+        return self
+
+    @property
+    def value(self):
+        if self._values:
+            return str(round((sum(self._values) / len(self._values)) * 100)).zfill(3) + '%'
+        return '???%'
+
+
+class PingTableLine:
+    def __init__(self, root, table, host_name, ip_address, index):
+        self._root = root
+        self._table = table
+        self._host_name = host_name
+        self._ip_address = ip_address
+        self._index = index
+
+        self._my_window: Optional[tk.Toplevel] = None
+        self._text = None
+        self._vsb = None
+        self._check_btn_v = None
+        self._check_button = None
+        self._data: List[Tuple[str, COLOR]] = []
+
+        self._color = None
+        self._statistics = Statistics()
+        self._status = CALCULATING
+        self._last_status_change = datetime.datetime.now()
+        self._is_alive = True
+        self._pause = False
+
+    @property
+    def _have_window(self):
+        return self._my_window is not None
+
+    @property
+    def _have_data(self):
+        return self._data != []
+
+    @property
+    def host_name(self):
+        return self._host_name
+
+    @property
+    def ip_address(self):
+        return self._ip_address
+
+    @property
+    def status(self):
+        if self._status is not CALCULATING:
+            return f'{self._status} since ' + self._last_status_change.strftime('%d.%m.%y %H:%M:%S')
+        return CALCULATING
+
+    @status.setter
+    def status(self, status):
+        if self._status != status:
+            self._status = status
+            self._last_status_change = datetime.datetime.now()
+
+    @property
+    def statistics(self):
+        return self._statistics.value
+
+    @property
+    def is_alive(self):
+        return self._is_alive
+
+    @property
+    def values(self):
+        return self._index, self._color, self._host_name, self._ip_address, self.status, self.statistics
+
+    @property
+    def pause(self):
+        return self._pause
+
+    @pause.setter
+    def pause(self, pause):
+        self._pause = pause
+
+    def add_data(self, data, color):
+        if self._have_window:
+            self._data.append((data, color))
+
+    def update_line(self, color):
+        """
+        מעדכן נתונים
+        :param color:
+        :return:
+        """
+        self._color = color
+        if color == GREEN:
+            if self._status == OFFLINE or CALCULATING:
+                self.status = ONLINE
+            self._statistics += True
+        elif color in [RED, YELLOW]:
+            if self._status == ONLINE or CALCULATING:
+                self.status = OFFLINE
+            self._statistics += False
+        else:
+            self.status = PAUSED
+
+    def create_window(self):
+        if not self._have_window:
+            self._my_window = tk.Toplevel(self._root)
+            self._my_window.geometry('750x250')
+            self._my_window.title(f'{self.host_name} ({self.ip_address})')
+            self._my_window.protocol('WM_DELETE_WINDOW', self.close_window)
+
+            self._text = tk.Text(self._my_window, height=6, width=40)
+            self._vsb = tk.Scrollbar(self._my_window, orient="vertical", command=self._text.yview)
+            self._text.configure(yscrollcommand=self._vsb.set)
+            self._vsb.pack(side="right", fill="y")
+            self._text.pack(side="left", fill="both", expand=True)
+            self._check_btn_v = tk.IntVar()
+            self._check_button = tk.Checkbutton(self._my_window, text="auto scroll", variable=self._check_btn_v)
+            self._check_button.select()
+            self._check_button.pack(side=tk.TOP)
+        self._my_window.focus_set()
+
+    def close_window(self):
+        self._my_window.destroy()
+        self._my_window = None
+        self._data = []
+
+    def add_data_to_window(self):
+        while self._have_data:
+            data, color = self._data.pop(0)
+            self._text.insert("end", data+'\n')
+            if self._check_btn_v.get():
+                self._text.see("end")
+
+    def kill(self):
+        self._is_alive = False
 
 
 class Menu:
@@ -554,21 +602,29 @@ def check_keyboard(key_event: tk.Event):
 def pinger_thread(table_line: PingTableLine, settings: Settings):
     ip = table_line.ip_address
     while settings.running and table_line.is_alive:
-        output = subprocess.getoutput(f'ping {ip} -n 1')
+        output = subprocess.getoutput(f'{PING_COMMAND} {ip}')
         output = output.split('\n')[2].lower()
         have_answer = [error_msg for error_msg in ERROR_MSGS if error_msg in output] == []
         if have_answer:
-            params = output.split(': ')[1]
-            p_bytes, p_time, p_ttl = params.split(' ')
-            # p_bytes = int(p_bytes.split('=')[1])
-            p_time = int(p_time.split('=' if '=' in p_time else '<')[1].strip('ms'))
-            # p_ttl = int(p_ttl.split('=')[1])
+            params = output.split(': ')[1].split(' ')
+            items = []
+            for item in params:
+                if 'bytes' in item or 'ttl' in item:
+                    items.append(int(item.split('=')[1]))
+                elif 'time' in item:
+                    items.append(int(item.split('=' if '=' in item else '<')[1].strip('ms')))
+            p_bytes, p_time, p_ttl = items
             color = YELLOW if p_time < DOCK_PARAM else GREEN
         else:
             color = RED
-        table_line.add_data(output, color)
+        time_str = datetime.datetime.now().strftime('%d.%m.%y %H:%M:%S')
+        table_line.add_data(f'{time_str} -> {output}', color)
         table_line.update_line(color)
-        time.sleep(1)
+        time.sleep(PING_SLEEP_TIMER)
+        while table_line.pause and settings.running and table_line.is_alive:
+            color = GRAY
+            table_line.update_line(color)
+            time.sleep(PING_SLEEP_TIMER)
 
 
 def valid_ip(ip):
