@@ -23,11 +23,6 @@ DEF_TEXT_BG_COLOR = None
 SCREEN_SIZE = '1000x500'
 SCREEN_TITLE = 'BetterPinger'
 
-UP = tk.N
-DOWN = tk.S
-RIGHT = tk.E
-LEFT = tk.W
-
 ERROR_MSGS = ['destination host unreachable',
               'request timed out',
               'ping request could not find host',
@@ -149,7 +144,7 @@ class TableLine:
         self._params: List[Text] = []
         for i, p in enumerate(params):
             self._params.append(Text(table_frame, p, (row_index, i), bg_color=WHITE))
-        
+
     def draw(self, **kwargs):
         for param in self._params:
             param.draw(**kwargs)
@@ -174,22 +169,41 @@ class TableLine:
 
 class Table:
     def __init__(self, master: tk.Misc, titles, pos):
+        row, column = pos
+        # make table resizable
+        master.grid_rowconfigure(row, weight=1)
+        # create resizable main frame
+        self._main_frame = tk.Frame(master)
+        self._main_frame.grid(row=row, column=column, sticky=tk.NSEW)
+        self._main_frame.grid_columnconfigure(0, weight=1)
+        self._main_frame.grid_rowconfigure(0, weight=1)
+        # put canvas and scrollbar insize main frame
+        self._canvas = tk.Canvas(self._main_frame)
+        self._canvas.grid(row=0, column=0, sticky=tk.NSEW)
+        self._scrollbar = tk.Scrollbar(self._main_frame, orient=tk.VERTICAL, command=self._canvas.yview)
+        self._scrollbar.grid(row=0, column=1, sticky=tk.NS)
+        # config canvas
+        self._canvas.config(yscrollcommand=self._scrollbar.set)
+        self._frame = tk.Frame(self._canvas, bg=BLACK)
+        self._canvas_frame = self._canvas.create_window((0, 0), window=self._frame, anchor='nw')
+        self._canvas.bind('<Configure>', self._canvas_config)
+
         self._master = master
-        self._frame = tk.Frame(self._master, bg=BLACK)
-        self._pos = pos
         self._titles = []
         for index, title in enumerate(titles):
-            self._titles.append(Text(self._frame, title, (0, index), size=2*DEF_TEXT_SIZE))
+            self._titles.append(Text(self._frame, title, (0, index), size=2 * DEF_TEXT_SIZE))
             self._frame.grid_columnconfigure(index, weight=1)
         self._lines: List[TableLine] = []
+
+    def _canvas_config(self, e):
+        self._canvas.itemconfig(self._canvas_frame, width=e.width)
+        self._canvas.config(scrollregion=self._canvas.bbox('all'))
 
     def add(self, line):
         self._lines.append(TableLine(self._frame, line, len(self._lines)))
         self._update_draw()
 
     def draw(self):
-        row, column = self._pos
-        self._frame.grid(row=row, column=column, sticky=tk.EW)
         for title in self._titles:
             title.draw(sticky=tk.EW, padx=2, pady=2)
         for value in self._lines:
@@ -197,8 +211,8 @@ class Table:
 
     def _update_draw(self):
         self._lines[-1].draw(sticky=tk.EW, padx=2, pady=2)
-    
-        
+
+
 class PingTableLine(TableLine):
     def __init__(self, master, table_frame, host_name, ip_address, row_index):
         super(PingTableLine, self).__init__(table_frame, [host_name, ip_address], row_index)
@@ -207,11 +221,11 @@ class PingTableLine(TableLine):
         self._data: List[Tuple[str, COLOR]] = []
         for line in self._params:
             line.bind('<Double-Button-1>', self.create_window)
-    
+
     @property
     def host_name(self) -> Text:
         return self._params[0]
-    
+
     @property
     def ip_address(self) -> Text:
         return self._params[1]
@@ -246,7 +260,7 @@ class PingTableLine(TableLine):
             data, color = self._data.pop(0)
             tk.Label(self._my_window, text=data, fg=color, bg=GRAY).pack(anchor=tk.W)
 
-        
+
 class PingTable(Table):
     def __init__(self, master: tk.Misc, pos, settings):
         super(PingTable, self).__init__(master, ('Host Name', 'Ip Address'), pos)
@@ -429,6 +443,8 @@ def main():
     settings = Settings()
     table = PingTable(root, (1, 0), settings)
     table.draw()
+    for i in range(10):
+        table.add(('hi', f'{i}.{i}.{i}.{i}'))
     menu = Menu(root, table)
     add_data_frame = AddDataFrame(root, (0, 0), table)
     add_data_frame.draw()
