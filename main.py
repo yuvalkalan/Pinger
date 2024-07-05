@@ -1,17 +1,20 @@
 import subprocess
 import threading
 import time
-from typing import *
+from typing import List, Optional, Tuple
 import tkinter as tk
 from tkinter import filedialog as fd, messagebox as msgbox
 
+COLOR = str
+POSITION = Tuple[int, int]
 
-BLACK = '#000000'
-RED = '#FF0000'
-GREEN = '#00FF00'
-BLUE = '#0000FF'
-WHITE = '#FFFFFF'
-YELLOW = '#FFFF00'
+BLACK: COLOR = '#000000'
+RED: COLOR = '#FF0000'
+GREEN: COLOR = '#00FF00'
+BLUE: COLOR = '#0000FF'
+WHITE: COLOR = '#FFFFFF'
+YELLOW: COLOR = '#FFFF00'
+GRAY: COLOR = '#808080'
 
 DEF_TEXT_SIZE = 20
 
@@ -59,7 +62,7 @@ class Text:
         self._pos = pos
         self._bg_color = bg_color
         self._bg_color_changed = False
-        self._font = ("Arial", self._size)
+        self._font = ('Arial', self._size)
         self._widget = tk.Entry(master, fg=color, readonlybackground=bg_color, font=self._font, bd=0)
         self._widget.insert(0, text)
         self._widget.config(state='readonly')
@@ -100,6 +103,9 @@ class Text:
     def destroy(self):
         self._widget.destroy()
 
+    def bind(self, event, handler):
+        self._widget.bind(event, handler)
+
 
 class Button(Text):
     def __init__(self, master, text, pos, func, color=DEF_TEXT_COLOR, bg_color=DEF_TEXT_BG_COLOR, size=DEF_TEXT_SIZE):
@@ -111,7 +117,7 @@ class Button(Text):
 class InputBox(Text):
     def __init__(self, master, text, pos, color=BLACK, bg_color=DEF_TEXT_BG_COLOR, size=DEF_TEXT_SIZE):
         super(InputBox, self).__init__(master, text, pos, color, bg_color, size)
-        self._widget = tk.Entry(master, fg='gray', bg=bg_color, font=self._font)
+        self._widget = tk.Entry(master, fg=GRAY, bg=bg_color, font=self._font)
         self._widget.insert(0, text)
         self._changed = False
         self._widget.bind('<FocusIn>', self._got_focus)
@@ -125,7 +131,7 @@ class InputBox(Text):
     def reset_text(self):
         self._widget.delete(0, tk.END)
         self._widget.insert(0, self._text)
-        self._widget.config(foreground='gray')
+        self._widget.config(foreground=GRAY)
         self._changed = False
 
     @property
@@ -137,6 +143,35 @@ class InputBox(Text):
         return self._changed
 
 
+class TableLine:
+    def __init__(self, table_frame, params: List[str], row_index):
+        self._table_frame = table_frame
+        self._params: List[Text] = []
+        for i, p in enumerate(params):
+            self._params.append(Text(table_frame, p, (row_index, i), bg_color=WHITE))
+        
+    def draw(self, **kwargs):
+        for param in self._params:
+            param.draw(**kwargs)
+
+    def destroy(self):
+        for param in self._params:
+            param.destroy()
+
+    @property
+    def bg_color(self):
+        return self._params[0].bg_color
+
+    @bg_color.setter
+    def bg_color(self, color):
+        for param in self._params:
+            param.bg_color = color
+
+    def change_background(self):
+        for param in self._params:
+            param.change_background()
+
+
 class Table:
     def __init__(self, master: tk.Misc, titles, pos):
         self._master = master
@@ -146,12 +181,10 @@ class Table:
         for index, title in enumerate(titles):
             self._titles.append(Text(self._frame, title, (0, index), size=2*DEF_TEXT_SIZE))
             self._frame.grid_columnconfigure(index, weight=1)
-        self._values: List[List[Text]] = [[] for _ in range(len(self._titles))]
+        self._lines: List[TableLine] = []
 
-    def add(self, row):
-        for index, value in enumerate(row):
-            grid_pos = (len(self._values[index]) + 1, index)
-            self._values[index].append(Text(self._frame, value, grid_pos, bg_color=WHITE))
+    def add(self, line):
+        self._lines.append(TableLine(self._frame, line, len(self._lines)))
         self._update_draw()
 
     def draw(self):
@@ -159,74 +192,99 @@ class Table:
         self._frame.grid(row=row, column=column, sticky=tk.EW)
         for title in self._titles:
             title.draw(sticky=tk.EW, padx=2, pady=2)
-        for lst in self._values:
-            for value in lst:
-                value.draw(sticky=tk.EW, padx=2, pady=2)
+        for value in self._lines:
+            value.draw(sticky=tk.EW, padx=2, pady=2)
 
     def _update_draw(self):
-        for lst in self._values:
-            lst[-1].draw(sticky=tk.EW, padx=2, pady=2)
+        self._lines[-1].draw(sticky=tk.EW, padx=2, pady=2)
+    
+        
+class PingTableLine(TableLine):
+    def __init__(self, master, table_frame, host_name, ip_address, row_index):
+        super(PingTableLine, self).__init__(table_frame, [host_name, ip_address], row_index)
+        self._my_window: Optional[tk.Toplevel] = None
+        self._master = master
+        self._data: List[Tuple[str, COLOR]] = []
+        for line in self._params:
+            line.bind('<Double-Button-1>', self.create_window)
+    
+    @property
+    def host_name(self) -> Text:
+        return self._params[0]
+    
+    @property
+    def ip_address(self) -> Text:
+        return self._params[1]
 
     @property
-    def items(self):
-        hosts, ips = self._values
-        return [(hosts[i].text, ips[i].text) for i in range(len(hosts))]
+    def _have_window(self):
+        return self._my_window is not None
 
+    @property
+    def _have_data(self):
+        return self._data != []
 
-def add_pinger(name_obj: Text, ip_obj: Text, settings: Settings):
-    ip = ip_obj.text
-    while settings.running:
-        output = subprocess.getoutput(f"ping {ip} -n 1")
-        output = output.split('\n')[2].lower()
-        have_answer = [error_msg for error_msg in ERROR_MSGS if error_msg in output] == []
-        if have_answer:
-            params = output.split(': ')[1]
-            p_bytes, p_time, p_ttl = params.split(' ')
-            p_bytes = int(p_bytes.split('=')[1])
-            p_time = int(p_time.split('=' if '=' in p_time else '<')[1].strip('ms'))
-            p_ttl = int(p_ttl.split('=')[1])
-            color = YELLOW if p_time < DOCK_PARAM else GREEN
-        else:
-            color = RED
-        name_obj.bg_color = color
-        ip_obj.bg_color = color
-        time.sleep(1)
+    def add_data(self, data, color):
+        if self._have_window:
+            self._data.append((data, color))
 
+    def create_window(self, _):
+        if not self._have_window:
+            self._my_window = tk.Toplevel(self._master, bg=GRAY)
+            self._my_window.geometry('750x250')
+            self._my_window.title(f'{self.host_name.text} ({self.ip_address.text})')
+            self._my_window.protocol('WM_DELETE_WINDOW', self.close_window)
+        self._my_window.focus_set()
 
+    def close_window(self):
+        self._my_window.destroy()
+        self._my_window = None
+        self._data = []
+
+    def add_data_to_window(self):
+        while self._have_data:
+            data, color = self._data.pop(0)
+            tk.Label(self._my_window, text=data, fg=color, bg=GRAY).pack(anchor=tk.W)
+
+        
 class PingTable(Table):
     def __init__(self, master: tk.Misc, pos, settings):
         super(PingTable, self).__init__(master, ('Host Name', 'Ip Address'), pos)
         self._master.after(100, self._check_pingers)
-        self._ping_list: List[threading.Thread] = []
+        self._ping_threads: List[threading.Thread] = []
         self._settings = settings
 
-    def add(self, row):
-        super(PingTable, self).add(row)
-        name, ip = [lst[-1] for lst in self._values]
-        thread = threading.Thread(target=add_pinger, args=[name, ip, self._settings])
-        self._ping_list.append(thread)
+    def add(self, host_name_and_ip_address):
+        name, ip = host_name_and_ip_address
+        new_line = PingTableLine(self._master, self._frame, name, ip, len(self._lines) + 1)
+        self._lines.append(new_line)
+        self._update_draw()
+        thread = threading.Thread(target=add_pinger, args=[new_line, self._settings])
+        self._ping_threads.append(thread)
         thread.start()
 
     def join(self):
-        for thread in self._ping_list:
+        for thread in self._ping_threads:
             thread.join()
 
     def reset(self):
         self._settings.running = False
         self.join()
-        self._ping_list = []
+        self._ping_threads = []
         self._settings.running = True
-        for lst in self._values:
-            for item in lst:
-                item.destroy()
-        self._values = [[] for _ in range(len(self._titles))]
+        for value in self._lines:
+            value.destroy()
+        self._lines: List[PingTableLine] = []
 
     def _check_pingers(self):
-        for lst in self._values:
-            for item in lst:
-                if item.bg_color_changed:
-                    item.change_background()
+        for line in self._lines:
+            line.change_background()
+            line.add_data_to_window()
         self._master.after(100, self._check_pingers)
+
+    @property
+    def items(self):
+        return [(line.host_name.text, line.ip_address.text) for line in self._lines]
 
 
 class Menu:
@@ -251,7 +309,7 @@ class Menu:
         self._settings_menu.add_command(label='text size', command=self._text_size_cmd)
 
     def _open_file_cmd(self):
-        self._file_name = fd.askopenfilename(title='Open File', filetypes=FILE_TYPES, defaultextension=".pngr")
+        self._file_name = fd.askopenfilename(title='Open File', filetypes=FILE_TYPES, defaultextension='.pngr')
         if self._file_name:
             try:
                 with open(self._file_name, 'r') as my_file:
@@ -272,7 +330,7 @@ class Menu:
                     my_file.write(f'{host}->{ip}\n')
 
     def _save_as_file_cmd(self):
-        filename = fd.asksaveasfilename(title='Save File', filetypes=FILE_TYPES, defaultextension=".pngr")
+        filename = fd.asksaveasfilename(title='Save File', filetypes=FILE_TYPES, defaultextension='.pngr')
         if filename:
             with open(filename, 'w+') as my_file:
                 for host, ip in self._table.items:
@@ -324,6 +382,26 @@ class AddDataFrame:
         return False
 
 
+def add_pinger(table_line: PingTableLine, settings: Settings):
+    ip = table_line.ip_address.text
+    while settings.running:
+        output = subprocess.getoutput(f'ping {ip} -n 1')
+        output = output.split('\n')[2].lower()
+        have_answer = [error_msg for error_msg in ERROR_MSGS if error_msg in output] == []
+        if have_answer:
+            params = output.split(': ')[1]
+            p_bytes, p_time, p_ttl = params.split(' ')
+            p_bytes = int(p_bytes.split('=')[1])
+            p_time = int(p_time.split('=' if '=' in p_time else '<')[1].strip('ms'))
+            p_ttl = int(p_ttl.split('=')[1])
+            color = YELLOW if p_time < DOCK_PARAM else GREEN
+        else:
+            color = RED
+        table_line.add_data(output, color)
+        table_line.bg_color = color
+        time.sleep(1)
+
+
 def valid_ip(ip):
     ip = ip.split('.')
     if len(ip) != 4:
@@ -337,6 +415,12 @@ def valid_ip(ip):
         return False
 
 
+def do_quit(root, settings, table):
+    settings.running = False
+    table.join()
+    root.destroy()
+
+
 def main():
     root = tk.Tk()
     root.geometry(SCREEN_SIZE)
@@ -344,17 +428,14 @@ def main():
     root.grid_columnconfigure(0, weight=1)
     settings = Settings()
     table = PingTable(root, (1, 0), settings)
-    # for i in range(100):
-    #     table.add((f'item{i}', f'{i}.{i}.{i}.{i}'))
     table.draw()
     menu = Menu(root, table)
     add_data_frame = AddDataFrame(root, (0, 0), table)
     add_data_frame.draw()
-    credit_label = tk.Label(root, text='Pinger++ by Yuval Kalanthroff', bg='gray')
+    credit_label = tk.Label(root, text='Pinger++ by Yuval Kalanthroff', bg=GRAY)
     credit_label.place(relx=0.5, rely=1.0, anchor='s', relwidth=1.0)
+    root.protocol('WM_DELETE_WINDOW', lambda: do_quit(root, settings, table))
     tk.mainloop()
-    settings.running = False
-    table.join()
 
 
 if __name__ == '__main__':
