@@ -1,3 +1,11 @@
+"""
+pinger++ v.19 by Yuval Kalanthroff
+rtl version
+new version - better log, bug fix
+08.08.23
+may the white rotem be with you
+"""
+
 from classes import *
 import sys
 
@@ -12,6 +20,11 @@ def do_quit(root, tables, main_menu):
 
 def init_root():
     root = tk.Tk()
+    stl = ttk.Style()
+    theme = stl.theme_use()
+    stl.theme_create('wrapper', parent=theme)
+    stl.theme_use('wrapper')
+    stl.map('Treeview', background=[('selected', '#0078d7')])
     root.geometry(SCREEN_SIZE)
     root.title(DEF_SCREEN_TITLE)
     return root
@@ -21,26 +34,27 @@ def main():
     root = init_root()
     settings.add_root(root)
     tables = []
-    sys.argv.append('hi.pngr')
     root.grid_columnconfigure(0, weight=1)
     root.grid_rowconfigure(1, weight=1)
     tables_pd = tk.PanedWindow(root, bg='black')
     tables_pd.grid(row=1, column=0, sticky=tk.NSEW)
     for i in range(settings.num_of_tables):
         tables.append(PingTable(tables_pd, (1, i), tables, i))
-    main_menu = Menu(root, tables)
+    add_data_frame = AddDataFrame(root, (0, 0), tables)
+    main_menu = Menu(root, tables, tables_pd, add_data_frame)
     if len(sys.argv) != 1:
         main_menu.open_file_cmd(sys.argv[1])
-    # for i in range(255):
-    #     tables[settings.table_adder].add(('hi', f'{i}.{i}.{i}.{i}'))
-    AddDataFrame(root, (0, 0), tables)
     blank_frame = tk.Frame(root)
     blank_frame.grid(row=2, column=0)
     tk.Label(blank_frame, text='').pack()
-    credit_label = tk.Label(root, text='Pinger++ by Yuval Kalanthroff', bd=1, relief=tk.SUNKEN)
+    current_time = datetime.datetime.now().strftime('%d.%m %H:%M')
+    credit_label = tk.Label(root, text=f"Pinger++ by Yuval Kalanthroff, Opened at {current_time}",
+                            bd=1, relief=tk.SUNKEN)
     credit_label.place(relx=0.5, rely=1.0, anchor='s', relwidth=1.0)
     root.protocol('WM_DELETE_WINDOW', lambda: do_quit(root, tables, main_menu))
     tk.mainloop()
+    log.add('מערכת', 'נסגר בהצלחה')
+    log.update()
 
 
 if __name__ == '__main__':

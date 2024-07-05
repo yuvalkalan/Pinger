@@ -1,0 +1,4 @@
+DEF_TEXT_COLOR = None
+DEF_TEXT_BG_COLOR = None
+SCREEN_SIZE = '1000x500'
+DEF_SCREEN_TITLE = 'Untitled - Pinger++'

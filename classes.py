@@ -1,375 +1,14 @@
-from constants import *
+from font import *
 from tkinter import filedialog as fd, messagebox as msgbox, ttk
-from typing import List, Optional, Dict
-import datetime
-import os
 import threading
 import time
-import subprocess
-import tkinter as tk
-import re
-
-
-class Settings:
-    def __init__(self):
-        self._running = True
-        self._root = None
-        self._tree_head_stl = None
-        self._tree_body_stl = None
-        self._table_adder = 0
-
-        self._text_size = None
-        self._ping_sleep_timer = None
-        self._ping_timeout = None
-        self._ping_buffer_size = None
-        self._ping_df_flag = None
-        self._ping_ttl = None
-        self._statistics_capacity = None
-        self._num_of_tables = self._original_num_of_tables = None
-        self._dock_time = None
-        self.config_params = self._read_settings_file()
-        self._original_num_of_tables = self._num_of_tables
-
-    @property
-    def running(self):
-        return self._running
-
-    @running.setter
-    def running(self, running):
-        self._running = running
-
-    @property
-    def tree_head_stl(self):
-        return self._tree_head_stl
-
-    @property
-    def tree_body_stl(self):
-        return self._tree_body_stl
-
-    @property
-    def table_adder(self):
-        last = self._table_adder
-        self._table_adder = (self._table_adder + 1) % self._original_num_of_tables
-        return last
-
-    def reset_adder(self):
-        self._table_adder = 0
-
-    @staticmethod
-    def _read_settings_file():
-        items = {}
-        try:
-            with open(SETTINGS_FILE, 'r') as my_file:
-                for line in my_file:
-                    key, value = line.strip('\n').split('=')
-                    items[key] = int(value)
-        except (OSError, ValueError):
-            items = DEFAULT_SETTINGS
-        return items
-
-    def set_settings(self, new_settings):
-        self.config_params = new_settings
-        with open(SETTINGS_FILE, 'w+') as my_file:
-            text = '\n'.join([f'{key}={value}' for key, value in self.config_params.items()])
-            my_file.write(text)
-
-    def reset_settings(self):
-        self.set_settings(DEFAULT_SETTINGS)
-
-    def _set_config(self):
-        self._tree_head_stl = ttk.Style()
-        self._tree_head_stl.configure("Treeview.Heading",
-                                      font=(DEF_TEXT_FONT, self.text_size * TEXT_HEAD_RATIO, 'bold'))
-
-        self._tree_body_stl = ttk.Style()
-        self._tree_body_stl.configure("Treeview", font=(DEF_TEXT_FONT, self.text_size, 'bold'),
-                                      rowheight=self.text_size * 2)
-
-    @property
-    def text_size(self):
-        return self._text_size
-
-    @property
-    def ping_sleep_timer(self):
-        return self._ping_sleep_timer
-
-    @property
-    def ping_timeout(self):
-        return self._ping_timeout
-
-    @property
-    def ping_buffer_size(self):
-        return self._ping_buffer_size
-
-    @property
-    def ping_df_flag(self):
-        return self._ping_df_flag
-
-    @property
-    def ping_ttl(self):
-        return self._ping_ttl
-
-    @property
-    def statistics_capacity(self):
-        return self._statistics_capacity
-
-    @property
-    def ping_command(self):
-        return 'ping -n 1 -l {} {} -i {} -w {}'.format(self.ping_buffer_size,
-                                                       "-f" if self.ping_df_flag else "",
-                                                       self.ping_ttl,
-                                                       self.ping_timeout)
-
-    @property
-    def num_of_tables(self):
-        return self._num_of_tables
-
-    @property
-    def dock_time(self):
-        return self._dock_time
-
-    @property
-    def config_params(self):
-        return {Config.TEXT_SIZE: self.text_size,
-                Config.SLEEP_TIMER: self.ping_sleep_timer,
-                Config.TIMEOUT: self.ping_timeout,
-                Config.BUFFER_SIZE: self.ping_buffer_size,
-                Config.DF_FLAG: self.ping_df_flag,
-                Config.TTL: self.ping_ttl,
-                Config.STATISTICS_CAPACITY: self.statistics_capacity,
-                Config.NUM_OF_TABLES: self.num_of_tables,
-                Config.DOCK_TIME: self.dock_time}
-
-    @config_params.setter
-    def config_params(self, config_params):
-        self._text_size = config_params[Config.TEXT_SIZE]
-        self._ping_sleep_timer = config_params[Config.SLEEP_TIMER]
-        self._ping_timeout = config_params[Config.TIMEOUT]
-        self._ping_buffer_size = config_params[Config.BUFFER_SIZE]
-        self._ping_df_flag = config_params[Config.DF_FLAG]
-        self._ping_ttl = config_params[Config.TTL]
-        self._statistics_capacity = config_params[Config.STATISTICS_CAPACITY]
-        self._num_of_tables = config_params[Config.NUM_OF_TABLES]
-        self._dock_time = config_params[Config.DOCK_TIME]
-        if self._root:
-            self._set_config()
-
-    def add_root(self, root):
-        self._root = root
-        self._set_config()
-
-
-settings = Settings()
-
-
-class Text:
-    def __init__(self, master: tk.Misc, text: str, pos, color=DEF_TEXT_COLOR, bg_color=DEF_TEXT_BG_COLOR,
-                 size=Default.TEXT_SIZE.value):
-        self._text = text
-        self._color = color
-        self._pos = pos
-        self._bg_color = bg_color
-        self._bg_color_changed = False
-        self._font = (DEF_TEXT_FONT, size)
-        self._widget = tk.Entry(master, fg=color, readonlybackground=bg_color, font=self._font, bd=0)
-        self._widget.insert(0, text)
-        self._widget.config(state='readonly')
-        self._is_dead = False
-
-    def draw(self, **kwargs):
-        row, column = self._pos
-        self._widget.grid(row=row, column=column, **kwargs)
-
-    def pack(self, *args, **kwargs):
-        self._widget.pack(*args, **kwargs)
-
-    @property
-    def text(self):
-        return self._text
-
-    @text.setter
-    def text(self, text):
-        self._text = text
-        self._widget.config(state='normal')
-        self._widget.delete(0, tk.END)
-        self._widget.insert(0, text)
-        self._widget.config(state='readonly')
-
-    @property
-    def bg_color(self):
-        return self._bg_color
-
-    @bg_color.setter
-    def bg_color(self, bg_color):
-        self._bg_color_changed = self._bg_color != bg_color or self._bg_color_changed
-        self._bg_color = bg_color
-
-    @property
-    def bg_color_changed(self):
-        res = self._bg_color_changed
-        self._bg_color_changed = False
-        return res
-
-    @property
-    def widget(self):
-        return self._widget
-
-    def change_background(self):
-        self._widget.config(readonlybackground=self._bg_color)
-
-    def destroy(self):
-        self._widget.destroy()
-
-    def bind(self, event, handler):
-        self._widget.bind(event, handler)
-
-
-class Button(Text):
-    def __init__(self, master: tk.Misc, text: str, pos, func, color=DEF_TEXT_COLOR, bg_color=DEF_TEXT_BG_COLOR,
-                 size=Default.TEXT_SIZE.value):
-        super(Button, self).__init__(master, text, pos, color, bg_color, size)
-        self._func = func
-        self._widget = tk.Button(master, text=text, fg=color, bg=bg_color, command=func, font=self._font)
-
-
-class InputBox(Text):
-    def __init__(self, master: tk.Misc, text: str, pos, color=Color.BLACK, bg_color=DEF_TEXT_BG_COLOR,
-                 size=Default.TEXT_SIZE.value):
-        super(InputBox, self).__init__(master, text, pos, color, bg_color, size)
-        self._widget = tk.Entry(master, fg=Color.GRAY, bg=bg_color, font=self._font)
-        self._widget.insert(0, text)
-        self._changed = False
-        self._widget.bind('<FocusIn>', self._got_focus)
-
-    def _got_focus(self, _):
-        if not self._changed:
-            self._changed = True
-            self._widget.delete(0, tk.END)
-            self._widget.config(foreground=self._color)
-
-    def reset_text(self):
-        self._widget.delete(0, tk.END)
-        self._widget.insert(0, self._text)
-        self._widget.config(foreground=Color.GRAY)
-        self._changed = False
-
-    @property
-    def value(self):
-        return self._widget.get()
-
-    @property
-    def changed(self):
-        return self._changed
-
-
-class Table:
-    def __init__(self, master: tk.PanedWindow, titles, pos):
-        row, column = pos
-        # make table resizable
-        master.grid_rowconfigure(row, weight=1)
-        master.grid_columnconfigure(column, weight=1)
-        self._master = master
-        self._frame = tk.Frame(master)
-        master.add(self._frame, stretch="always")
-        self._frame.grid_columnconfigure(0, weight=1)
-        self._frame.grid_rowconfigure(0, weight=1)
-        # create tree
-        self._titles = titles
-        self._tree = ttk.Treeview(self._frame, columns=titles, show='headings')
-        for column in titles:
-            self._tree.heading(column, text=column)
-            self._tree.column(column, minwidth=1)
-        self._tree.grid(row=0, column=0, sticky=tk.NSEW)
-        # add a scrollbar
-        self._scrollbar = ttk.Scrollbar(self._frame, orient=tk.VERTICAL, command=self._tree.yview)
-        self._tree.configure(yscrollcommand=self._scrollbar.set)
-        self._scrollbar.grid(row=0, column=1, sticky='ns')
-        self._menu = tk.Menu(self._frame, tearoff=False)
-        self._menu.add_command(label='remove', command=self._remove_cmd)
-        self._menu.add_command(label='forward', command=self._forward_cmd)
-        self._menu.add_command(label='backward', command=self._backward_cmd)
-        self._tree.bind('<Button-3>', self._popup_menu)
-        self._tree.bind('<FocusOut>', lambda e: self._tree.selection_set([]))
-        self._have_changed = False
-        self._master.after(0, self._set_size)
-
-    def _set_size(self):
-        length = self._tree.winfo_width()
-        for title in self._titles:
-            self._tree.column(title, width=length//4)
-
-    @property
-    def have_changed(self):
-        return self._have_changed
-
-    @have_changed.setter
-    def have_changed(self, value):
-        self._have_changed = value
-
-    @property
-    def children(self):
-        return self._tree.get_children()
-
-    @property
-    def selection(self):
-        return self._tree.selection()
-
-    def _popup_menu(self, event):
-        iids = self.selection
-        children = self.children
-        first, last = children[0], children[-1]
-        self._menu.entryconfig('forward', state='disable' if first in iids else 'normal')
-        self._menu.entryconfig('backward', state='disable' if last in iids else 'normal')
-        self._menu.tk_popup(event.x_root, event.y_root)
-
-    def _remove_cmd(self):
-        for iid in self.selection:
-            self._tree.delete(iid)
-
-    def _switch_pos(self, first, second):
-        children = self.children
-        first_row, second_row = self._tree.item(first), self._tree.item(second)
-        first_value, first_tag = first_row['values'], first_row['tags']
-        second_value, second_tag = second_row['values'], second_row['tags']
-        self._tree.delete(first)
-        self._tree.insert('', children.index(first), iid=first, values=second_value, tags=second_tag)
-        self._tree.delete(second)
-        self._tree.insert('', children.index(second), iid=second, values=first_value, tags=first_tag)
-
-    def _forward_cmd(self):
-        iids = self.selection
-        children = self.children
-        new = []
-        if iids:
-            self._have_changed = True
-        for iid in iids:
-            for i, child in enumerate(children):
-                if iid == child:
-                    new.append(children[i - 1])
-                    self._switch_pos(child, children[i-1])
-        self._tree.selection_set(new)
-
-    def _backward_cmd(self):
-        iids = self.selection[::-1]
-        children = self.children
-        new = []
-        if iids:
-            self._have_changed = True
-        for iid in iids:
-            for i, child in enumerate(children):
-                if iid == child:
-                    new.append(children[i + 1])
-                    self._switch_pos(child, children[i + 1])
-        self._tree.selection_set(new)
-
-    def add(self, line):
-        return self._tree.insert('', tk.END, values=line)
+from ping import PingSocket
 
 
 class PingTable(Table):
     def __init__(self, master: tk.PanedWindow, pos, tables, table_index):
-        super(PingTable, self).__init__(master, ('Host Name', 'Ip Address', 'Status', 'Statistics (%)'), pos)
-        self._master.after(100, self._check_pingers)
+        super(PingTable, self).__init__(master, ('(%) סטטיסטיקה', 'סטטוס', 'כתובת היעד', 'שם היעד'), pos)
+        self._master.after(0, self._check_pingers)
         self._tables: List[PingTable] = tables
         self._table_index = table_index
         self._ping_threads: List[threading.Thread] = []
@@ -427,46 +66,43 @@ class PingTable(Table):
 
     def _check_keypress(self, event: tk.Event):
         pressed_keys = check_keyboard(event)
-        keycode = event.keycode
-        match keycode:
-            case Keycodes.A:
-                if pressed_keys[Modifiers.CTRL]:
-                    self._tree.selection_set(self.children)
-            case Keycodes.ESCAPE:
-                self._tree.selection_set([])
-            case Keycodes.DELETE:
-                self._remove_cmd()
-            case Keycodes.UP | Keycodes.DOWN:
-                selection = [item for item in self.selection]
-                if selection:
-                    if pressed_keys[Modifiers.SHIFT]:
-                        if keycode == Keycodes.UP and self.children[0] not in selection:
-                            self._forward_cmd()
-                        elif keycode == Keycodes.DOWN and self.children[-1] not in selection:
-                            self._backward_cmd()
-                    else:
-                        children = self.children
-                        top_most = selection[0]
-                        for i, child in enumerate(children):
-                            if child == top_most:
-                                direction = -1 if keycode == Keycodes.UP else 1
-                                new_selection = children[(i + direction) % len(children)]
-                                self._tree.selection_set(new_selection)
-                                self._tree.see(new_selection)
-                                break
-            case _:
-                print(event)
+        key_code = event.keycode
+        if key_code == Keycodes.A:
+            if pressed_keys[Modifiers.CTRL]:
+                self._tree.selection_set(self.children)
+        elif key_code == Keycodes.ESCAPE:
+            self._tree.selection_set([])
+        elif key_code == Keycodes.DELETE:
+            self._remove_cmd()
+        elif key_code in [Keycodes.UP, Keycodes.DOWN]:
+            selection = [item for item in self.selection]
+            if selection:
+                if pressed_keys[Modifiers.SHIFT]:
+                    if key_code == Keycodes.UP and self.children[0] not in selection:
+                        self._forward_cmd()
+                    elif key_code == Keycodes.DOWN and self.children[-1] not in selection:
+                        self._backward_cmd()
+                else:
+                    children = self.children
+                    top_most = selection[0]
+                    for i, child in enumerate(children):
+                        if child == top_most:
+                            direction = -1 if key_code == Keycodes.UP else 1
+                            new_selection = children[(i + direction) % len(children)]
+                            self._tree.selection_set(new_selection)
+                            self._tree.see(new_selection)
+                            break
 
-    def add(self, host_name_and_ip_address):
-        name, ip = host_name_and_ip_address
+    def add(self, host_and_ip_address):
+        name, ip = host_and_ip_address
         if name and ip:
-            iid = super(PingTable, self).add([name, ip, Status.CALCULATING, '?%'])
+            iid = super(PingTable, self).add(['?%', Status.CALCULATING, ip, hebrew_reshaper(name)])
             new_line = PingTableLine(self._master, self, name, ip, iid)
             self._item_indexes[iid] = new_line
 
             self._have_changed = True
-
-            thread = threading.Thread(target=pinger_thread, args=[new_line])
+            thread = threading.Thread(target=pinger_thread,
+                                      args=[new_line, (self._table_index+1) * 1000 + len(self._ping_threads)])
             self._ping_threads.append(thread)
             thread.start()
 
@@ -484,20 +120,26 @@ class PingTable(Table):
     def _submit_updates(self, iid, color, name, ip, status, statistics):
         children = self.children
         self._tree.delete(iid)
-        self._tree.insert('', children.index(iid), iid=iid, values=[name, ip, status, statistics], tags=[color])
+        name = hebrew_reshaper(name)
+        self._tree.insert('', children.index(iid), iid=iid, values=[statistics, status, ip, name], tags=[color])
 
     def _check_pingers(self):
-        selections = self.selection
+        log.update()
+        selection = self.selection
         for iid in self._item_indexes:
             line = self._item_indexes[iid]
             self._submit_updates(*line.values)
             line.add_data_to_window()
-        self._tree.selection_set(selections)
+        self._tree.selection_set(selection)
         self._master.after(settings.ping_sleep_timer, self._check_pingers)
 
     @property
     def items(self):
         return [(line.host_name, line.ip_address) for line in self._item_indexes.values()]
+
+    def move_table_cmd(self):
+        self._tree.selection_set(self.children)
+        self._move_table_cmd()
 
 
 class Statistics:
@@ -518,6 +160,9 @@ class Statistics:
             self._index = (self._index + 1) % len(self._values)
         return self
 
+    def __float__(self):
+        return round((sum(self._values) / len(self._values)), 2)
+
     @property
     def value(self):
         if self._values:
@@ -529,6 +174,33 @@ class Statistics:
         value = self._capacity != settings.statistics_capacity
         self._capacity = settings.statistics_capacity
         return value
+
+
+class ColorMaster:
+    def __init__(self):
+        self._current_color = None
+        self._log_line = None
+        self._last_colors = [None] * 3
+
+    def update(self, color):
+        if self._current_color != color:
+            self._log_line = LOG_MODES[self._current_color][color] if color and self._current_color else None
+        self.color = color
+        return self._log_line if self._is_changed else None
+
+    @property
+    def color(self):
+        return self._current_color
+
+    @color.setter
+    def color(self, color):
+        self._last_colors.append(self._current_color)
+        self._last_colors = self._last_colors[-4:]
+        self._current_color = color
+
+    @property
+    def _is_changed(self):
+        return self._last_colors[-1] == self._last_colors[-2] and self._last_colors[-1] not in self._last_colors[-4:-2]
 
 
 class PingTableLine:
@@ -546,12 +218,13 @@ class PingTableLine:
         self._check_button = None
         self._data: List[Tuple[str, COLOR]] = []
 
-        self._color = None
+        self._color = ColorMaster()
         self._statistics = Statistics()
         self._status = Status.CALCULATING
-        self._last_status_change = datetime.datetime.now()
+        self._last_status_change = None
         self._is_alive = True
         self._pause = False
+        self._read_start_pos()
 
     @property
     def _have_window(self):
@@ -576,19 +249,23 @@ class PingTableLine:
     @ip_address.setter
     def ip_address(self, value):
         self._ip_address = value
-        self._color = None
+        self._color = ColorMaster()
         self._statistics = Statistics()
         self._status = Status.CALCULATING
-        self._last_status_change = datetime.datetime.now()
+        self._last_status_change = None
 
     @property
     def status(self):
-        if self._status is not Status.CALCULATING:
-            return self._last_status_change.strftime('%d.%m %H:%M')
-        return Status.CALCULATING
+        if not self._last_status_change:
+            return '--.-- --:--'
+        if self._status is Status.CALCULATING:
+            return Status.CALCULATING
+        return self._last_status_change.strftime('%d.%m %H:%M')
 
     @status.setter
     def status(self, status):
+        if not self._last_status_change and status is Status.OFFLINE:
+            return
         if self._status != status:
             self._status = status
             self._last_status_change = datetime.datetime.now()
@@ -603,7 +280,7 @@ class PingTableLine:
 
     @property
     def values(self):
-        return self._iid, self._color, self._host_name, self._ip_address, self.status, self.statistics
+        return self._iid, self._color.color, self._host_name, self._ip_address, self.status, self.statistics
 
     @property
     def pause(self):
@@ -626,12 +303,11 @@ class PingTableLine:
             self._data.append((data, color))
 
     def update_line(self, color):
-        """
-        change line params
-        :param color:
-        :return:
-        """
-        self._color = color
+        # add line to log
+        log_mode = self._color.update(color)
+        if log_mode and not (settings.log_ignore_dock and log_mode in [LOG_MODE_Y2R, LOG_MODE_R2Y]):
+            log.add(self.host_name, log_mode)
+        # change color and status
         if color == Color.GREEN:
             if self._status == Status.OFFLINE or Status.CALCULATING:
                 self.status = Status.ONLINE
@@ -647,19 +323,19 @@ class PingTableLine:
         if not self._have_window:
             self._my_window = tk.Toplevel(self._root)
             self._my_window.geometry('750x250')
-            self._my_window.title(f'{self.host_name} ({self.ip_address})')
+            self._my_window.title(f'({self.ip_address}) {hebrew_reshaper(self.host_name)}')
             self._my_window.protocol('WM_DELETE_WINDOW', self.close_window)
 
-            self._text = tk.Text(self._my_window, height=6, width=40, state='disabled')
+            self._text = tk.Text(self._my_window, height=6, width=40)
             self._text.tag_config(Color.RED, background=Color.RED)
             self._text.tag_config(Color.YELLOW, background=Color.YELLOW)
             self._text.tag_config(Color.GREEN, background=Color.GREEN)
-            self._vsb = tk.Scrollbar(self._my_window, orient="vertical", command=self._text.yview)
+            self._vsb = tk.Scrollbar(self._my_window, orient='vertical', command=self._text.yview)
             self._text.configure(yscrollcommand=self._vsb.set)
-            self._vsb.pack(side="right", fill="y")
-            self._text.pack(side="left", fill="both", expand=True)
+            self._vsb.pack(side='right', fill='y')
+            self._text.pack(side='left', fill='both', expand=True)
             self._check_btn_v = tk.IntVar()
-            self._check_button = tk.Checkbutton(self._my_window, text="auto scroll", variable=self._check_btn_v)
+            self._check_button = tk.Checkbutton(self._my_window, text='auto scroll', variable=self._check_btn_v)
             self._check_button.select()
             self._check_button.pack(side=tk.TOP)
         self._my_window.focus_set()
@@ -670,17 +346,23 @@ class PingTableLine:
         self._data = []
 
     def add_data_to_window(self):
-        if self._my_window:
-            self._text.config(state='normal')
-            while self._have_data:
-                data, color = self._data.pop(0)
-                self._text.insert(tk.END, data+'\n', color)
-                if self._check_btn_v.get():
-                    self._text.see(tk.END)
-            self._text.config(state='disabled')
+        while self._have_data:
+            data, color = self._data.pop(0)
+            self._text.insert(tk.END, data + '\n', color)
+            if self._check_btn_v.get():
+                self._text.see(tk.END)
 
     def kill(self):
         self._is_alive = False
+
+    def _read_start_pos(self):
+        if self._host_name in log.start_pos:
+            time_stamp, value = log.start_pos[self._host_name]
+            if value in [LOG_MODE_R2G, LOG_MODE_Y2G]:
+                self._status = Status.ONLINE
+            else:
+                self._status = Status.OFFLINE
+            self._last_status_change = time_stamp
 
 
 class EditRow:
@@ -689,16 +371,16 @@ class EditRow:
         self._line = line
 
         self._my_window = tk.Toplevel(self._master)
-        self._my_window.title(f'edit {line.host_name} ({line.ip_address})')
+        self._my_window.title(f'edit {line.host_name}, ({line.ip_address})')
         self._my_window.wm_minsize(150, 50)
         self._my_window.grid_rowconfigure(0, weight=1)
         self._my_window.grid_rowconfigure(1, weight=1)
         self._my_window.grid_columnconfigure(0, weight=1)
         self._my_window.grid_columnconfigure(1, weight=1)
 
-        self._name_input = InputBox(self._my_window, 'Host Name', (0, 0))
+        self._name_input = Inputbox(self._my_window, 'Host Name', (0, 0))
         self._name_input.draw(sticky=tk.NSEW)
-        self._ip_input = InputBox(self._my_window, 'Ip Address', (0, 1))
+        self._ip_input = Inputbox(self._my_window, 'Ip Address', (0, 1))
         self._ip_input.draw(sticky=tk.NSEW)
         self._submit_btn = Button(self._my_window, 'submit', (1, 0), self._edit_cmd)
         self._submit_btn.draw(columnspan=2, sticky=tk.NSEW)
@@ -706,6 +388,9 @@ class EditRow:
     @property
     def _valid_data(self):
         if self._name_input.changed and self._name_input.value != '':
+            if len(self._name_input.value) >= MAX_SUBJECT_LENGTH - 2:
+                msgbox.showerror('Error!', f'Host Name is Longer then {MAX_SUBJECT_LENGTH - 2} Chars!')
+                return False
             if self._ip_input.changed and self._ip_input.value != '':
                 ip = self._ip_input.value
                 if valid_ip(ip):
@@ -723,81 +408,6 @@ class EditRow:
             self._my_window.destroy()
 
 
-class FloatInputBox(Text):
-    def __init__(self, master: tk.Misc, text: str, pos, from_, to, jump_by=1, color=Color.BLACK,
-                 bg_color=DEF_TEXT_BG_COLOR, size=Default.TEXT_SIZE.value):
-        super(FloatInputBox, self).__init__(master, text, pos, color, bg_color, size)
-        self._from = from_
-        self._to = to
-        validate_cmd = (master.register(self.validate), '%d', '%i', '%P', '%s', '%S', '%v', '%V', '%W')
-        self._widget = tk.Spinbox(master, from_=from_, to=to, increment=jump_by, fg=color, font=self._font,
-                                  bd=0, bg=bg_color, validate='key', validatecommand=validate_cmd, wrap=True)
-        self._set_text(text)
-
-    def validate(self, action, index, value_if_allowed: str, prior_value, text, validation_type, trigger_type,
-                 widget_name):
-        if value_if_allowed:
-            try:
-                float(value_if_allowed)
-            except ValueError:
-                return False
-        return True
-
-    @property
-    def value(self):
-        v = self._widget.get()
-        if v:
-            return max(min(float(v), self._to), self._from)
-        return None
-
-    def _set_text(self, text: str):
-        self._widget.delete(0, tk.END)
-        self._widget.insert(0, text)
-
-
-class IntInputBox(FloatInputBox):
-    def __init__(self, master: tk.Misc, text: str, pos, from_, to, jump_by=1, color=Color.BLACK,
-                 bg_color=DEF_TEXT_BG_COLOR, size=Default.TEXT_SIZE.value):
-        super(IntInputBox, self).__init__(master, text, pos, from_, to, jump_by, color, bg_color, size)
-
-    def validate(self, action, index, value_if_allowed, prior_value, text, validation_type, trigger_type, widget_name):
-        if value_if_allowed:
-            try:
-                int(value_if_allowed)
-            except ValueError:
-                return False
-        return True
-
-    @property
-    def value(self):
-        v = self._widget.get()
-        if v:
-            return max(min(int(v), self._to), self._from)
-        return None
-
-
-class BoolInputBox(IntInputBox):
-    def __init__(self, master: tk.Misc, text: str, pos, color=Color.BLACK,
-                 bg_color=DEF_TEXT_BG_COLOR, size=Default.TEXT_SIZE.value):
-        super(IntInputBox, self).__init__(master, text, pos, None, None, 1, color, bg_color, size)
-        self._values = ['True', 'False']
-        self._widget.config(values=self._values)
-        self._set_text(text)
-
-    def validate(self, action, index, value_if_allowed, prior_value, text, validation_type, trigger_type, widget_name):
-        if value_if_allowed:
-            if value_if_allowed not in ['True', 'False']:
-                return False
-        return True
-
-    @property
-    def value(self):
-        v = self._widget.get()
-        if v:
-            return 1 if v == 'True' else 0
-        return None
-
-
 class SettingsWindow:
     def __init__(self, master, menu):
         self._master = master
@@ -813,6 +423,8 @@ class SettingsWindow:
         self._my_window.bind('<Return>', self._submit_cmd)
         self._my_window.bind('<Escape>', self._close_cmd)
 
+        self._start_values = settings.config_params
+
         self._param_frame = tk.Frame(self._my_window, bg=Color.BLACK)
         self._param_frame.grid(row=0, column=0, sticky=tk.NSEW)
         self._param_frame.grid_columnconfigure(0, weight=1)
@@ -827,11 +439,15 @@ class SettingsWindow:
             self._value_frame.grid_rowconfigure(i, weight=1)
 
             Text(self._param_frame, key, (i, 0)).draw(padx=2, pady=2, sticky=tk.EW)
-            if key in [Config.DF_FLAG]:
+            if key in [Config.LOG_IGNORE_DOCK]:
                 param_value = BoolInputBox(self._value_frame, str(bool(value)), (i, 0))
             else:
-                from_, to = RANGE_OF_SETTINGS[key].value
-                param_value = IntInputBox(self._value_frame, value, (i, 0), from_, to)
+                from_, to = RANGE_OF_SETTINGS[key]
+                if key in [Config.TEXT_SIZE]:
+                    param_value = IntInputBox(self._value_frame, value, (i, 0), from_, to,
+                                              on_change=self._set_text_size)
+                else:
+                    param_value = IntInputBox(self._value_frame, value, (i, 0), from_, to)
             param_value.draw(padx=2, pady=2, sticky=tk.EW)
             self._items[key] = param_value
 
@@ -849,20 +465,28 @@ class SettingsWindow:
         self._reset_btn.draw(sticky=tk.EW)
 
     def _close_cmd(self, *_):
-        self._menu.settings_closed()
-        self._my_window.destroy()
+        settings.config_params = self._start_values
+        self._on_exit()
 
     def _submit_cmd(self, *_):
         new_settings = {key: value.value for key, value in self._items.items()}
         for key in new_settings:
             if new_settings[key] is None:
                 new_settings[key] = DEFAULT_SETTINGS[key]
+        self._menu.set_num_of_table(new_settings[Config.NUM_OF_TABLES])
         settings.set_settings(new_settings)
-        self._close_cmd()
+        self._on_exit()
 
     def _reset_cmd(self, *_):
         settings.reset_settings()
-        self._close_cmd()
+        self._on_exit()
+
+    def _on_exit(self):
+        self._menu.settings_closed()
+        self._my_window.destroy()
+
+    def _set_text_size(self):
+        settings.set_text_size(self._items[Config.TEXT_SIZE].value)
 
     def focus_set(self):
         self._my_window.focus_set()
@@ -887,6 +511,7 @@ class AutoInsertWin:
 
         self._title = Text(self._main_frame, 'Enter IP Range:', (0, 0))
         self._title.draw(sticky=tk.EW, columnspan=4)
+
         self._start_ip = [IntInputBox(self._main_frame, '0', (1, i), 0, 255) for i in range(4)]
         for box in self._start_ip:
             box.draw(sticky=tk.EW, padx=2, pady=2)
@@ -895,7 +520,7 @@ class AutoInsertWin:
         for box in self._end_ip:
             box.draw(sticky=tk.EW, padx=2, pady=2)
 
-        self._buttons_frame = tk.Frame(self._my_window, bg=Color.BLACK)
+        self._buttons_frame = tk.Frame(self._my_window)
         self._buttons_frame.grid(row=1, column=0, sticky=tk.NSEW)
         self._buttons_frame.grid_columnconfigure(0, weight=1)
         self._buttons_frame.grid_columnconfigure(1, weight=1)
@@ -918,7 +543,7 @@ class AutoInsertWin:
         self._menu.auto_insert_closed()
         self._my_window.destroy()
 
-    def _submit_cmd(self):
+    def _submit_cmd(self, *_):
         self._menu.auto_insert([item.value for item in self._start_ip],
                                [item.value for item in self._end_ip],
                                self._index)
@@ -929,17 +554,158 @@ class AutoInsertWin:
         return self._table_menu_options.index(self._table_menu.get())
 
 
+class LogWin:
+    def __init__(self, master, menu):
+        self._master = master
+        self._menu = menu
+
+        self._my_window = tk.Toplevel(master)
+        self._my_window.geometry('750x250')
+        self._my_window.resizable(True, True)
+        self._my_window.title('Log')
+        self._my_window.protocol('WM_DELETE_WINDOW', self._close_cmd)
+
+        self._main_menu = tk.Menu(self._my_window, tearoff=False)
+        self._filter_menu = tk.Menu(self._main_menu, tearoff=False)
+        self._main_menu.add_cascade(label='filter', menu=self._filter_menu)
+        self._filters_value = {}
+        self._set_filters()
+
+        self._text = tk.Text(self._my_window, height=6, width=40, font=('Courier New', 8))
+        self._text.tag_config('rtl', justify=tk.RIGHT)
+        self._vsb = tk.Scrollbar(self._my_window, orient='vertical', command=self._text.yview)
+        self._text.configure(yscrollcommand=self._vsb.set)
+        self._vsb.pack(side='right', fill='y')
+        self._text.pack(side='left', fill='both', expand=True)
+        self._check_btn_v = tk.IntVar()
+        self._check_button = tk.Checkbutton(self._my_window, text='auto scroll', variable=self._check_btn_v)
+        self._check_button.select()
+        self._check_button.pack(side=tk.TOP)
+
+        self._last_value = []
+
+        self._my_window.after(0, self._update)
+        self._my_window.config(menu=self._main_menu)
+
+    @property
+    def checked_filters(self):
+        return {key for key in self._filters_value if self._filters_value[key].get()}
+
+    def focus_set(self):
+        self._my_window.focus_set()
+
+    def _close_cmd(self, *_):
+        self._menu.log_win_closed()
+        self._my_window.destroy()
+
+    def _update(self):
+        if len(log.hostnames) != len(self._filters_value):
+            self._set_filters()
+        new_value = self._filter(log.get_string_rtl())
+        if new_value != self._last_value:
+            current_pos = self._text.yview()[0]
+            self._text.delete('1.0', tk.END)
+            for line in new_value:
+                self._text.insert(tk.END, line, 'rtl')
+            self._text.yview_moveto(current_pos)
+            if self._check_btn_v.get():
+                self._text.see(tk.END)
+            self._last_value = new_value
+        self._my_window.after(settings.ping_sleep_timer, self._update)
+
+    def _set_filters(self):
+        for index, hostname in enumerate(log.hostnames):
+            hostname = hebrew_reshaper(hostname).strip()
+            if hostname not in self._filters_value:
+                value = tk.IntVar()
+                value.set(1)
+                self._filters_value[hostname] = value
+                self._filter_menu.add_checkbutton(label=hostname, variable=value)
+
+    def _filter(self, content):
+        filtered_content = []
+        lines = content.split('\n')
+        checked_filters = self.checked_filters
+        for line in lines:
+            for hostname in checked_filters:
+                if hostname in line:
+                    filtered_content.append(line+'\n')
+                    break
+        return filtered_content
+
+
+class AddDataFrame:
+    def __init__(self, master: tk.Misc, pos, tables: List[PingTable]):
+        self._master = master
+        self._pos = pos
+        self._tables = tables
+        self._frame = tk.Frame(self._master)
+        self._name_input = Inputbox(self._frame, 'Host Name', (0, 0))
+        self._ip_input = Inputbox(self._frame, 'Ip Address', (0, 1))
+        self._submit_button = Button(self._frame, 'Submit', (0, 2), self._submit_func)
+
+        self._table_menu_options = [f'table {i + 1}' for i in range(len(self._tables))]
+        self._table_menu = ttk.Combobox(self._frame, values=self._table_menu_options, state='readonly')
+        self._table_menu.current(0)
+
+        for i in range(4):
+            self._frame.grid_columnconfigure(i, weight=1)
+        row, column = self._pos
+        self._frame.grid(row=row, column=column, sticky=tk.EW, columnspan=settings.num_of_tables)
+        self._name_input.draw(sticky=tk.EW)
+        self._ip_input.draw(sticky=tk.EW)
+        self._submit_button.draw(sticky=tk.EW)
+        self._table_menu.grid(row=0, column=3, sticky=tk.NSEW)
+
+    def _submit_func(self):
+        if self._valid_data:
+            self._tables[self._index].add((self._name_input.value, self._ip_input.value))
+            self._master.focus_set()
+            self._name_input.reset_text()
+            self._ip_input.reset_text()
+
+    @property
+    def _valid_data(self):
+        if self._name_input.changed and self._name_input.value != '':
+            if len(self._name_input.value) > MAX_SUBJECT_LENGTH - 2:
+                msgbox.showerror('Error!', f'Host Name is Longer then {MAX_SUBJECT_LENGTH - 2} Chars!')
+                return False
+            if self._ip_input.changed and self._ip_input.value != '':
+                ip = self._ip_input.value
+                if valid_ip(ip):
+                    return True
+                msgbox.showerror('Error!', 'Invalid IP Address!')
+                return False
+            msgbox.showerror('Error!', 'No IP Address Provided!')
+            return False
+        msgbox.showerror('Error!', 'No Host Name Provided!')
+        return False
+
+    @property
+    def _index(self):
+        return self._table_menu_options.index(self._table_menu.get())
+
+    def set_num_of_table(self):
+        self._table_menu_options = [f'table {i + 1}' for i in range(len(self._tables))]
+        self._table_menu.config(values=self._table_menu_options)
+        self._table_menu.current(0)
+
+
 class Menu:
-    def __init__(self, master, tables: List[PingTable]):
+    def __init__(self, master, tables: List[PingTable], tables_pd: tk.PanedWindow, add_data_frame: AddDataFrame):
         self._master = master
         self._tables = tables
+        self._tables_pd = tables_pd
+        self._add_data_frame = add_data_frame
 
         self._file_name = ''
         self._settings_win: Optional[SettingsWindow] = None
         self._auto_insert_win: Optional[AutoInsertWin] = None
+        self._log_win: Optional[LogWin] = None
 
         self._main_menu = tk.Menu(master, tearoff=False)
         self._file_menu = tk.Menu(self._main_menu, tearoff=False)
+        self._log_menu = tk.Menu(self._main_menu, tearoff=False)
 
         self._main_menu.add_cascade(label='file', menu=self._file_menu)
 
@@ -951,7 +717,11 @@ class Menu:
         self._file_menu.add_command(label='save as', command=self.save_as_file_cmd)
 
         self._main_menu.add_command(label='settings', command=self._open_settings_cmd)
+
         self._main_menu.add_command(label='auto insert', command=self._auto_insert_cmd)
+
+        self._main_menu.add_cascade(label='log', menu=self._log_menu)
+        self._log_menu.add_command(label='open', command=self._open_log_cmd)
 
         master.config(menu=self._main_menu)
 
@@ -980,7 +750,7 @@ class Menu:
                     with open(self._file_name, 'r') as my_file:
                         content = my_file.read()
                     content = content.split('\n')[:-1]
-                    content = [item.split('->') for item in content]
+                    content = [item.split('->', 1) for item in content]
                     for item in content:
                         if len(item) != 2:
                             raise ValueError
@@ -996,7 +766,7 @@ class Menu:
                     return True
                 except Exception as e:
                     msgbox.showerror('Error!', f'can\'t open file! {e}')
-                    self._file_name = last_file_name
+                self._file_name = last_file_name
         return False
 
     def save_file_cmd(self):
@@ -1052,54 +822,26 @@ class Menu:
                     for d in range(start_ip[3], end_ip[3] + 1):
                         self._tables[table_index].add(('auto', f'{a}.{b}.{c}.{d}'))
 
+    def log_win_closed(self):
+        self._log_win = None
 
-class AddDataFrame:
-    def __init__(self, master: tk.Misc, pos, tables: List[PingTable]):
-        self._master = master
-        self._pos = pos
-        self._tables = tables
-        self._frame = tk.Frame(self._master)
-        self._name_input = InputBox(self._frame, 'Host Name', (0, 0))
-        self._ip_input = InputBox(self._frame, 'Ip Address', (0, 1))
-        self._submit_button = Button(self._frame, 'Submit', (0, 2), self._submit_func)
+    def _open_log_cmd(self):
+        if not self._log_win:
+            self._log_win = LogWin(self._master, self)
+        self._log_win.focus_set()
 
-        self._table_menu_options = [f'table {i + 1}' for i in range(len(self._tables))]
-        self._table_menu = ttk.Combobox(self._frame, values=self._table_menu_options, state='readonly')
-        self._table_menu.current(0)
-
-        for i in range(4):
-            self._frame.grid_columnconfigure(i, weight=1)
-        row, column = self._pos
-        self._frame.grid(row=row, column=column, sticky=tk.EW, columnspan=settings.num_of_tables)
-        self._name_input.draw(sticky=tk.EW)
-        self._ip_input.draw(sticky=tk.EW)
-        self._submit_button.draw(sticky=tk.EW)
-        self._table_menu.grid(row=0, column=3, sticky=tk.NSEW)
-
-    def _submit_func(self):
-        if self._valid_data:
-            self._tables[self._index].add((self._name_input.value, self._ip_input.value))
-            self._master.focus_set()
-            self._name_input.reset_text()
-            self._ip_input.reset_text()
-
-    @property
-    def _valid_data(self):
-        if self._name_input.changed and self._name_input.value != '':
-            if self._ip_input.changed and self._ip_input.value != '':
-                ip = self._ip_input.value
-                if valid_ip(ip):
-                    return True
-                msgbox.showerror('Error!', 'Invalid IP Address!')
-                return False
-            msgbox.showerror('Error!', 'No IP Address Provided!')
-            return False
-        msgbox.showerror('Error!', 'No Host Name Provided!')
-        return False
-
-    @property
-    def _index(self):
-        return self._table_menu_options.index(self._table_menu.get())
+    def set_num_of_table(self, num_of_tables):
+        if num_of_tables != len(self._tables):
+            while len(self._tables) > num_of_tables:
+                table = self._tables[-1]
+                table.move_table_cmd()
+                table.delete()
+                self._tables.pop()
+            while len(self._tables) < num_of_tables:
+                self._tables.append(PingTable(self._tables_pd, (1, len(self._tables)), self._tables, len(self._tables)))
+            for table in self._tables:
+                self._master.after(0, table.set_size)
+        self._add_data_frame.set_num_of_table()
 
 
 def valid_ip(ip):
@@ -1115,37 +857,27 @@ def valid_ip(ip):
         return False
 
 
-def check_ping_response(output):
-    pattern = re.compile(r'reply from .+\..+\..+\..+: bytes=(.*) time[=<](.*)ms ttl=(.*)')
-    matches = pattern.finditer(output)
-    items = [item for item in matches]
-    if items:
-        item = items[0]
-        return output, int(item.group(1)), int(item.group(2)), int(item.group(3)), True
-    return output, 0, 0, 0, False
-
-
-def pinger_thread(table_line: PingTableLine):
+def pinger_thread(table_line: PingTableLine, identifier):
+    ip = table_line.ip_address
+    ping_socket = PingSocket(ip, identifier)
     while settings.running and table_line.is_alive:
-        ip = table_line.ip_address
-        try:
-            output = subprocess.getoutput(f'{settings.ping_command} {ip}')
-            output = output.split('\n')[2].lower()
-            output, bytes_param, time_param, ttl_param, have_answer = check_ping_response(output)
-        except Exception as e:
-            output, bytes_param, time_param, ttl_param, have_answer = str(e), 0, 0, 0, False
-        if have_answer:
-            color = Color.YELLOW if time_param < settings.dock_time else Color.GREEN
+        start_time = datetime.datetime.now()
+        if table_line.pause:
+            time.sleep(settings.ping_sleep_timer / 1000)
+            table_line.update_line(Color.GRAY)
+            continue
+        ping_socket.ip = table_line.ip_address
+        ping_socket.send(settings.ping_buffer_size, settings.ping_ttl, settings.ping_timeout)
+        answer, rtt = ping_socket.receive()
+        if rtt:
+            color = Color.YELLOW if rtt < settings.dock_time else Color.GREEN
         else:
             color = Color.RED
-        time_str = datetime.datetime.now().strftime('%d.%m.%y %H:%M:%S')
-        table_line.add_data(f'{time_str} -> {output}', color)
+        time_str = datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+        table_line.add_data(f'{time_str} -> {answer}', color)
         table_line.update_line(color)
-        time.sleep(settings.ping_sleep_timer / 1000)
-        while table_line.pause and settings.running and table_line.is_alive:
-            color = Color.GRAY
-            table_line.update_line(color)
-            time.sleep(settings.ping_sleep_timer / 1000)
+        to_sleep = max(settings.ping_sleep_timer / 1000 - (datetime.datetime.now() - start_time).total_seconds(), 0)
+        time.sleep(to_sleep)
 
 
 def ask_for_save(tables, main_menu):
