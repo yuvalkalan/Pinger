@@ -1,5 +1,4 @@
 import datetime
-import os
 import subprocess
 import threading
 import time
@@ -64,8 +63,8 @@ DEF_STATISTICS_CAPACITY = 100
 
 DEF_TEXT_SIZE = 12
 
-DEF_PING_SLEEP_TIMER = 1
-DEF_PING_TIMEOUT = 2
+DEF_PING_SLEEP_TIMER = 1.0
+DEF_PING_TIMEOUT = 2.0
 DEF_PING_BUFFER_SIZE = 32
 DEF_PING_DF_FLAG = 0
 DEF_PING_TTL = 128
@@ -76,10 +75,19 @@ CONFIG_TEXT_SIZE = 'text size'
 CONFIG_SLEEP_TIMER = 'ping sleep timer (sec)'
 CONFIG_TIMEOUT = 'ping timeout (sec)'
 CONFIG_BUFFER_SIZE = 'ping buffer size (bytes)'
-CONFIG_DF_FLAG = 'ping df flag (0/1)'
+CONFIG_DF_FLAG = 'ping df flag (T/F)'
 CONFIG_TTL = 'ping ttl'
 CONFIG_SCROLL_SENSITIVITY = 'scroll sensetivity'
 CONFIG_STATISTICS_CAPACITY = 'statistics capacity'
+
+DEFUALT_SETTINGS = {CONFIG_TEXT_SIZE: DEF_TEXT_SIZE,
+                    CONFIG_SLEEP_TIMER: DEF_PING_SLEEP_TIMER,
+                    CONFIG_TIMEOUT: DEF_PING_TIMEOUT,
+                    CONFIG_BUFFER_SIZE: DEF_PING_BUFFER_SIZE,
+                    CONFIG_DF_FLAG: DEF_PING_DF_FLAG,
+                    CONFIG_TTL: DEF_PING_TTL,
+                    CONFIG_SCROLL_SENSITIVITY: DEF_SCROLL_SENSITIVITY,
+                    CONFIG_STATISTICS_CAPACITY: DEF_STATISTICS_CAPACITY}
 
 
 class Settings:
@@ -126,17 +134,13 @@ class Settings:
         try:
             with open(SETTINGS_FILE, 'r') as my_file:
                 for line in my_file:
-                    key, value = line.split('=')
-                    items[key] = int(value)
+                    key, value = line.strip('\n').split('=')
+                    try:
+                        items[key] = int(value)
+                    except ValueError:
+                        items[key] = float(value)
         except (OSError, ValueError):
-            items = {CONFIG_TEXT_SIZE: DEF_TEXT_SIZE,
-                     CONFIG_SLEEP_TIMER: DEF_PING_SLEEP_TIMER,
-                     CONFIG_TIMEOUT: DEF_PING_TIMEOUT,
-                     CONFIG_BUFFER_SIZE: DEF_PING_BUFFER_SIZE,
-                     CONFIG_DF_FLAG: DEF_PING_DF_FLAG,
-                     CONFIG_TTL: DEF_PING_TTL,
-                     CONFIG_SCROLL_SENSITIVITY: DEF_SCROLL_SENSITIVITY,
-                     CONFIG_STATISTICS_CAPACITY: DEF_STATISTICS_CAPACITY}
+            items = DEFUALT_SETTINGS
         return items
 
     def set_settings(self, new_settings):
@@ -146,11 +150,7 @@ class Settings:
             my_file.write(text)
 
     def reset_settings(self):
-        try:
-            os.remove(SETTINGS_FILE)
-        except FileNotFoundError:
-            pass
-        self.config_params = self._read_settings_file()
+        self.set_settings(DEFUALT_SETTINGS)
 
     def _set_config(self):
         self._tree_head_stl = ttk.Style()
@@ -469,7 +469,7 @@ class PingTable(Table):
             self._submit_updates(*line.values)
             line.add_data_to_window()
         self._tree.selection_set(selections)
-        self._master.after(500 * settings.ping_sleep_timer, self._check_pingers)
+        self._master.after(int(500 * settings.ping_sleep_timer), self._check_pingers)
 
     @property
     def items(self):
@@ -623,31 +623,69 @@ class PingTableLine:
         self._is_alive = False
 
 
-class IntInputBox(InputBox):
+class FloatInputbox(InputBox):
     def __init__(self, master, text, pos, color=BLACK, bg_color=DEF_TEXT_BG_COLOR, size=settings.text_size):
-        super(IntInputBox, self).__init__(master, text, pos, color, bg_color, size)
+        super(FloatInputbox, self).__init__(master, text, pos, color, bg_color, size)
         vcmd = (master.register(self.validate), '%d', '%i', '%P', '%s', '%S', '%v', '%V', '%W')
-        self._widget.config(validatecommand=vcmd)
+        self._widget.config(validate='key', validatecommand=vcmd)
         self._changed = True
         self._widget.config(foreground=self._color)
 
     @staticmethod
-    def validate(value_if_allowed):
+    def validate(action, index, value_if_allowed, prior_value, text, validation_type, trigger_type, widget_name):
         if value_if_allowed:
             try:
                 float(value_if_allowed)
-                return True
             except ValueError:
                 return False
-        else:
-            return True
+        return True
+
+    @property
+    def value(self):
+        v = self._widget.get()
+        if v:
+            return float(v)
+        return None
+
+
+class IntInputBox(FloatInputbox):
+    def __init__(self, master, text, pos, color=BLACK, bg_color=DEF_TEXT_BG_COLOR, size=settings.text_size):
+        super(IntInputBox, self).__init__(master, text, pos, color, bg_color, size)
+
+    @staticmethod
+    def validate(action, index, value_if_allowed, prior_value, text, validation_type, trigger_type, widget_name):
+        if value_if_allowed:
+            try:
+                int(value_if_allowed)
+            except ValueError:
+                return False
+        return True
 
     @property
     def value(self):
         v = self._widget.get()
         if v:
             return int(v)
-        return 0
+        return None
+
+
+class BoolInputBox(IntInputBox):
+    def __init__(self, master, text, pos, color=BLACK, bg_color=DEF_TEXT_BG_COLOR, size=settings.text_size):
+        super(IntInputBox, self).__init__(master, text, pos, color, bg_color, size)
+
+    @staticmethod
+    def validate(action, index, value_if_allowed, prior_value, text, validation_type, trigger_type, widget_name):
+        if value_if_allowed:
+            if value_if_allowed.lower() not in ['t', 'f']:
+                return False
+        return True
+
+    @property
+    def value(self):
+        v = self._widget.get()
+        if v:
+            return v.lower() == 't'
+        return None
 
 
 class SettingsWindow:
@@ -671,14 +709,18 @@ class SettingsWindow:
         self._value_frame.grid(row=0, column=1, sticky=tk.NSEW)
         self._value_frame.grid_columnconfigure(0, weight=1)
 
-        self._items: Dict[str, IntInputBox] = {}
+        self._items: Dict[str, FloatInputbox] = {}
         for i, (key, value) in enumerate(settings.config_params.items()):
             self._param_frame.grid_rowconfigure(i, weight=1)
             self._value_frame.grid_rowconfigure(i, weight=1)
 
             Text(self._param_frame, key, (i, 0)).draw(padx=2, pady=2, sticky=tk.EW)
-
-            param_value = IntInputBox(self._value_frame, value, (i, 0))
+            if key in [CONFIG_TIMEOUT, CONFIG_SLEEP_TIMER]:
+                param_value = FloatInputbox(self._value_frame, value, (i, 0))
+            elif key in [CONFIG_DF_FLAG]:
+                param_value = BoolInputBox(self._value_frame, 'T' if value else 'F', (i, 0))
+            else:
+                param_value = IntInputBox(self._value_frame, value, (i, 0))
             param_value.draw(padx=2, pady=2, sticky=tk.EW)
             self._items[key] = param_value
 
@@ -700,7 +742,11 @@ class SettingsWindow:
         self._my_window.destroy()
 
     def _submit_cmd(self):
-        settings.set_settings({key: value.value for key, value in self._items.items()})
+        new_settings = {key: value.value for key, value in self._items.items()}
+        for key in new_settings:
+            if new_settings[key] is None:
+                new_settings[key] = DEFUALT_SETTINGS[key]
+        settings.set_settings(new_settings)
         self._close_cmd()
 
     def _reset_cmd(self):

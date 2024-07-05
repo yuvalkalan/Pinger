@@ -1,5 +1,6 @@
 import tkinter as tk
 
+
 class window2:
     def __init__(self, master1: tk.Tk):
         self.panel2 = tk.Frame(master1)
