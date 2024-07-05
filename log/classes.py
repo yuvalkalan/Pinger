@@ -46,7 +46,7 @@ class LogFile:
             self._times.pop(0)
             self._lines.pop(0)
             self._changed = True
-        # rewrite file if need
+        # rewrite file if needed
         if self.changed:
             try:
                 with open(self._file_name, 'wb+') as log_file:
