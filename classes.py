@@ -2,6 +2,7 @@ from constants import *
 from tkinter import filedialog as fd, messagebox as msgbox, ttk
 from typing import List, Optional, Dict
 import datetime
+import os
 import threading
 import time
 import subprocess
@@ -22,7 +23,6 @@ class Settings:
         self._ping_buffer_size = None
         self._ping_df_flag = None
         self._ping_ttl = None
-        self._scroll_sensitivity = None
         self._statistics_capacity = None
         self._num_of_tables = self._original_num_of_tables = None
         self._dock_time = None
@@ -112,10 +112,6 @@ class Settings:
         return self._ping_ttl
 
     @property
-    def scroll_sensitivity(self):
-        return self._scroll_sensitivity
-
-    @property
     def statistics_capacity(self):
         return self._statistics_capacity
 
@@ -142,7 +138,6 @@ class Settings:
                 Config.BUFFER_SIZE: self.ping_buffer_size,
                 Config.DF_FLAG: self.ping_df_flag,
                 Config.TTL: self.ping_ttl,
-                Config.SCROLL_SENSITIVITY: self.scroll_sensitivity,
                 Config.STATISTICS_CAPACITY: self.statistics_capacity,
                 Config.NUM_OF_TABLES: self.num_of_tables,
                 Config.DOCK_TIME: self.dock_time}
@@ -155,7 +150,6 @@ class Settings:
         self._ping_buffer_size = config_params[Config.BUFFER_SIZE]
         self._ping_df_flag = config_params[Config.DF_FLAG]
         self._ping_ttl = config_params[Config.TTL]
-        self._scroll_sensitivity = config_params[Config.SCROLL_SENSITIVITY]
         self._statistics_capacity = config_params[Config.STATISTICS_CAPACITY]
         self._num_of_tables = config_params[Config.NUM_OF_TABLES]
         self._dock_time = config_params[Config.DOCK_TIME]
@@ -270,21 +264,22 @@ class InputBox(Text):
 
 
 class Table:
-    def __init__(self, master: tk.Misc, titles, pos):
+    def __init__(self, master: tk.PanedWindow, titles, pos):
         row, column = pos
         # make table resizable
         master.grid_rowconfigure(row, weight=1)
         master.grid_columnconfigure(column, weight=1)
         self._master = master
         self._frame = tk.Frame(master)
+        master.add(self._frame, stretch="always")
         self._frame.grid_columnconfigure(0, weight=1)
         self._frame.grid_rowconfigure(0, weight=1)
-        self._frame.grid(row=row, column=column, sticky=tk.NSEW)
+        # self._frame.grid(row=row, column=column, sticky=tk.NSEW)
         # create tree
         self._tree = ttk.Treeview(self._frame, columns=titles, show='headings')
         for column in titles:
             self._tree.heading(column, text=column)
-            self._tree.column(column, minwidth=0)
+            self._tree.column(column, minwidth=1)
         self._tree.grid(row=0, column=0, sticky=tk.NSEW)
         # add a scrollbar
         self._scrollbar = ttk.Scrollbar(self._frame, orient=tk.VERTICAL, command=self._tree.yview)
@@ -368,7 +363,7 @@ class Table:
 
 
 class PingTable(Table):
-    def __init__(self, master: tk.Misc, pos, tables, table_index):
+    def __init__(self, master: tk.PanedWindow, pos, tables, table_index):
         super(PingTable, self).__init__(master, ('Host Name', 'Ip Address', 'Status', 'Statistics (%)'), pos)
         self._master.after(100, self._check_pingers)
         self._tables: List[PingTable] = tables
@@ -451,7 +446,9 @@ class PingTable(Table):
                         for i, child in enumerate(children):
                             if child == top_most:
                                 direction = -1 if keycode == Keycodes.UP else 1
-                                self._tree.selection_set(children[(i + direction) % len(children)])
+                                new_selection = children[(i + direction) % len(children)]
+                                self._tree.selection_set(new_selection)
+                                self._tree.see(new_selection)
                                 break
             case _:
                 print(event)
@@ -583,7 +580,7 @@ class PingTableLine:
     @property
     def status(self):
         if self._status is not Status.CALCULATING:
-            return f'{self._status} since ' + self._last_status_change.strftime('%d.%m.%y %H:%M:%S')
+            return self._last_status_change.strftime('%d.%m %H:%M')
         return Status.CALCULATING
 
     @status.setter
@@ -720,16 +717,22 @@ class EditRow:
 
 
 class FloatInputbox(InputBox):
-    def __init__(self, master, text, pos, color=Color.BLACK, bg_color=DEF_TEXT_BG_COLOR, size=Default.TEXT_SIZE.value):
+    def __init__(self, master, text, pos, color=Color.BLACK, bg_color=DEF_TEXT_BG_COLOR, size=Default.TEXT_SIZE.value,
+                 max_len=0):
         super(FloatInputbox, self).__init__(master, text, pos, color, bg_color, size)
         validate_cmd = (master.register(self.validate), '%d', '%i', '%P', '%s', '%S', '%v', '%V', '%W')
         self._widget.config(validate='key', validatecommand=validate_cmd)
         self._changed = True
+        self._max_len = max_len
         self._widget.config(foreground=self._color)
 
-    @staticmethod
-    def validate(action, index, value_if_allowed, prior_value, text, validation_type, trigger_type, widget_name):
+    def validate(self, action, index, value_if_allowed: str, prior_value, text, validation_type, trigger_type,
+                 widget_name):
         if value_if_allowed:
+            if self._max_len:
+                if value_if_allowed.count('.') != 0:
+                    if len(str(value_if_allowed).split('.')[-1]) > self._max_len:
+                        return False
             try:
                 float(value_if_allowed)
             except ValueError:
@@ -748,8 +751,7 @@ class IntInputBox(FloatInputbox):
     def __init__(self, master, text, pos, color=Color.BLACK, bg_color=DEF_TEXT_BG_COLOR, size=Default.TEXT_SIZE.value):
         super(IntInputBox, self).__init__(master, text, pos, color, bg_color, size)
 
-    @staticmethod
-    def validate(action, index, value_if_allowed, prior_value, text, validation_type, trigger_type, widget_name):
+    def validate(self, action, index, value_if_allowed, prior_value, text, validation_type, trigger_type, widget_name):
         if value_if_allowed:
             try:
                 int(value_if_allowed)
@@ -769,8 +771,7 @@ class BoolInputBox(IntInputBox):
     def __init__(self, master, text, pos, color=Color.BLACK, bg_color=DEF_TEXT_BG_COLOR, size=Default.TEXT_SIZE.value):
         super(IntInputBox, self).__init__(master, text, pos, color, bg_color, size)
 
-    @staticmethod
-    def validate(action, index, value_if_allowed, prior_value, text, validation_type, trigger_type, widget_name):
+    def validate(self, action, index, value_if_allowed, prior_value, text, validation_type, trigger_type, widget_name):
         if value_if_allowed:
             if value_if_allowed.lower() not in ['t', 'f']:
                 return False
@@ -815,7 +816,7 @@ class SettingsWindow:
 
             Text(self._param_frame, key, (i, 0)).draw(padx=2, pady=2, sticky=tk.EW)
             if key in [Config.TIMEOUT, Config.SLEEP_TIMER]:
-                param_value = FloatInputbox(self._value_frame, value, (i, 0))
+                param_value = FloatInputbox(self._value_frame, value, (i, 0), max_len=3)
             elif key in [Config.DF_FLAG]:
                 param_value = BoolInputBox(self._value_frame, 'T' if value else 'F', (i, 0))
             else:
@@ -917,7 +918,7 @@ class Menu:
                     for table in self._tables:
                         table.have_changed = False
                     self._file_menu.entryconfig('save', state='normal')
-                    self._master.title(f'{self._file_name} - pinger++')
+                    self._set_title()
                     return True
                 except Exception as e:
                     msgbox.showerror('Error!', f'can\'t open file! {e}')
@@ -946,10 +947,13 @@ class Menu:
     def save_as_file_cmd(self):
         self._file_name = fd.asksaveasfilename(title='Save File', filetypes=FILE_TYPES, defaultextension='.pngr')
         if self.save_file_cmd():
-            self._master.title(f'{self._file_name} - pinger++')
+            self._set_title()
             self._file_menu.entryconfig('save', state='normal')
             return True
         return False
+
+    def _set_title(self):
+        self._master.title(os.path.basename(self._file_name))
 
     def window_closed(self):
         self._settings_win = None

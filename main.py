@@ -22,8 +22,12 @@ def main():
     settings.add_root(root)
     tables = []
     sys.argv.append('hi.pngr')
+    root.grid_columnconfigure(0, weight=1)
+    root.grid_rowconfigure(1, weight=1)
+    tables_pd = tk.PanedWindow(root, bg='black')
+    tables_pd.grid(row=1, column=0, sticky=tk.NSEW)
     for i in range(settings.num_of_tables):
-        tables.append(PingTable(root, (1, i), tables, i))
+        tables.append(PingTable(tables_pd, (1, i), tables, i))
     main_menu = Menu(root, tables)
     if len(sys.argv) != 1:
         main_menu.open_file_cmd(sys.argv[1])

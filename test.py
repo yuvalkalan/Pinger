@@ -1,16 +1,30 @@
-from tkinter import *
+import tkinter as tk
+
+root = tk.Tk()
+root.grid_rowconfigure(0, weight=1)
+root.grid_columnconfigure(0, weight=1)
+
+frame = tk.Frame(root, bg='black')
+frame.grid(row=0, column=0, sticky=tk.NSEW)
+frame.grid_rowconfigure(0, weight=1)
+frame.grid_columnconfigure(0, weight=1)
 
 
-root = Tk()
-text = Text(root)
-text.insert(INSERT, "Hello.....")
-text.insert(END, "Bye Bye.....\nadd some more")
-text.pack()
+pd1 = tk.PanedWindow(frame, orient=tk.HORIZONTAL, bg='black')
+pd1.grid(row=0, column=0, sticky=tk.NSEW)
 
-text.tag_add("here", "1.0", "1.4")
-text.tag_add("start", "1.8", "1.13")
-text.tag_add("another", "2")
-text.tag_config("here", background="yellow", foreground="blue")
-text.tag_config("start", background="black", foreground="green")
-text.tag_config("another", background='red', foreground='blue')
-root.mainloop()
+l_frame = tk.Frame(pd1)
+pd1.add(l_frame)
+
+left_label = tk.Label(l_frame, text="left")
+left_label.grid(row=0, column=0, sticky=tk.EW)
+
+for i in range(10):
+    t_frame = tk.Frame(pd1)
+    pd1.add(t_frame)
+
+    top_label = tk.Label(t_frame, text="left")
+    top_label.grid(row=0, column=0, sticky=tk.EW)
+
+
+tk.mainloop()

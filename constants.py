@@ -37,14 +37,12 @@ class Config(enum.StrEnum):
     BUFFER_SIZE = 'ping buffer size (bytes)'
     DF_FLAG = 'ping df flag (T/F)'
     TTL = 'ping ttl'
-    SCROLL_SENSITIVITY = 'scroll sensitivity'
     STATISTICS_CAPACITY = 'statistics capacity'
     NUM_OF_TABLES = 'number of tables'
     DOCK_TIME = 'dock time'
 
 
 class Default(enum.IntEnum):
-    SCROLL_SENSITIVITY = 120
     STATISTICS_CAPACITY = 100
     TEXT_SIZE = 12
     PING_SLEEP_TIMER = 1.0
@@ -113,7 +111,6 @@ DEFAULT_SETTINGS = {Config.TEXT_SIZE: Default.TEXT_SIZE,
                     Config.BUFFER_SIZE: Default.PING_BUFFER_SIZE,
                     Config.DF_FLAG: Default.PING_DF_FLAG,
                     Config.TTL: Default.PING_TTL,
-                    Config.SCROLL_SENSITIVITY: Default.SCROLL_SENSITIVITY,
                     Config.STATISTICS_CAPACITY: Default.STATISTICS_CAPACITY,
                     Config.NUM_OF_TABLES: Default.NUM_OF_TABLES,
                     Config.DOCK_TIME: Default.DOCK_TIME}
