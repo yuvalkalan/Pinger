@@ -1,3 +1,4 @@
+import datetime
 import subprocess
 import threading
 import time
@@ -34,6 +35,12 @@ ERROR_MSGS = ['destination host unreachable',
 FILE_TYPES = (('Pinger Files (*.pngr)', '*.pngr'), ('All Files (*.*)', '*.*'))
 
 DOCK_PARAM = 100
+
+CALCULATING = 'Calculating...'
+ONLINE = 'Online'
+OFFLINE = 'Offline'
+
+MOUSE_SCROLL_SENSITIVITY = 120
 
 
 class Settings:
@@ -76,6 +83,14 @@ class Text:
     @property
     def text(self):
         return self._text
+
+    @text.setter
+    def text(self, text):
+        self._text = text
+        self._widget.config(state='normal')
+        self._widget.delete(0, tk.END)
+        self._widget.insert(0, text)
+        self._widget.config(state='readonly')
 
     @property
     def bg_color(self):
@@ -143,7 +158,8 @@ class TableLine:
         self._table_frame = table_frame
         self._params: List[Text] = []
         for i, p in enumerate(params):
-            self._params.append(Text(table_frame, p, (row_index, i), bg_color=WHITE))
+            item = Text(table_frame, p, (row_index, i), bg_color=WHITE)
+            self._params.append(item)
 
     def draw(self, **kwargs):
         for param in self._params:
@@ -161,10 +177,6 @@ class TableLine:
     def bg_color(self, color):
         for param in self._params:
             param.bg_color = color
-
-    def change_background(self):
-        for param in self._params:
-            param.change_background()
 
 
 class Table:
@@ -187,6 +199,8 @@ class Table:
         self._frame = tk.Frame(self._canvas, bg=BLACK)
         self._canvas_frame = self._canvas.create_window((0, 0), window=self._frame, anchor='nw')
         self._canvas.bind('<Configure>', self._canvas_config)
+        self._canvas.bind_all('<MouseWheel>',
+                              lambda e: self._canvas.yview_scroll(-1*(e.delta//MOUSE_SCROLL_SENSITIVITY), 'units'))
 
         self._master = master
         self._titles = []
@@ -215,10 +229,14 @@ class Table:
 
 class PingTableLine(TableLine):
     def __init__(self, master, table_frame, host_name, ip_address, row_index):
-        super(PingTableLine, self).__init__(table_frame, [host_name, ip_address], row_index)
+        super(PingTableLine, self).__init__(table_frame, [host_name, ip_address, CALCULATING, '?%'], row_index)
         self._my_window: Optional[tk.Toplevel] = None
         self._master = master
         self._data: List[Tuple[str, COLOR]] = []
+        self._status = CALCULATING
+        self._last_status_change = datetime.datetime.now()
+        self._tries_counter = 0
+        self._success_couner = 0
         for line in self._params:
             line.bind('<Double-Button-1>', self.create_window)
 
@@ -231,6 +249,32 @@ class PingTableLine(TableLine):
         return self._params[1]
 
     @property
+    def status_obj(self) -> Text:
+        return self._params[2]
+
+    @property
+    def statistics_obj(self) -> Text:
+        return self._params[3]
+
+    @property
+    def status(self):
+        if self._status is not CALCULATING:
+            return f'{self._status} since ' + self._last_status_change.strftime('%d.%m.%y, %H:%M:%S')
+        return CALCULATING
+
+    @status.setter
+    def status(self, status):
+        if self._status != status:
+            self._status = status
+            self._last_status_change = datetime.datetime.now()
+
+    @property
+    def statistics(self):
+        if self._tries_counter:
+            return str(round((self._success_couner / self._tries_counter) * 100)).zfill(3) + '%'
+        return '???%'
+
+    @property
     def _have_window(self):
         return self._my_window is not None
 
@@ -241,6 +285,23 @@ class PingTableLine(TableLine):
     def add_data(self, data, color):
         if self._have_window:
             self._data.append((data, color))
+
+    def update_line(self, color):
+        self._tries_counter += 1
+        self.bg_color = color
+        if color == GREEN:
+            if self._status == OFFLINE or CALCULATING:
+                self.status = ONLINE
+            self._success_couner += 1
+        else:
+            if self._status == ONLINE or CALCULATING:
+                self.status = OFFLINE
+
+    def submit_updates(self):
+        for param in self._params:
+            param.change_background()
+        self.status_obj.text = self.status
+        self.statistics_obj.text = self.statistics
 
     def create_window(self, _):
         if not self._have_window:
@@ -263,7 +324,7 @@ class PingTableLine(TableLine):
 
 class PingTable(Table):
     def __init__(self, master: tk.Misc, pos, settings):
-        super(PingTable, self).__init__(master, ('Host Name', 'Ip Address'), pos)
+        super(PingTable, self).__init__(master, ('Host Name', 'Ip Address', 'Status', 'Statistics (%)'), pos)
         self._master.after(100, self._check_pingers)
         self._ping_threads: List[threading.Thread] = []
         self._settings = settings
@@ -273,7 +334,7 @@ class PingTable(Table):
         new_line = PingTableLine(self._master, self._frame, name, ip, len(self._lines) + 1)
         self._lines.append(new_line)
         self._update_draw()
-        thread = threading.Thread(target=add_pinger, args=[new_line, self._settings])
+        thread = threading.Thread(target=pinger_thread, args=[new_line, self._settings])
         self._ping_threads.append(thread)
         thread.start()
 
@@ -292,7 +353,7 @@ class PingTable(Table):
 
     def _check_pingers(self):
         for line in self._lines:
-            line.change_background()
+            line.submit_updates()
             line.add_data_to_window()
         self._master.after(100, self._check_pingers)
 
@@ -396,7 +457,7 @@ class AddDataFrame:
         return False
 
 
-def add_pinger(table_line: PingTableLine, settings: Settings):
+def pinger_thread(table_line: PingTableLine, settings: Settings):
     ip = table_line.ip_address.text
     while settings.running:
         output = subprocess.getoutput(f'ping {ip} -n 1')
@@ -412,7 +473,7 @@ def add_pinger(table_line: PingTableLine, settings: Settings):
         else:
             color = RED
         table_line.add_data(output, color)
-        table_line.bg_color = color
+        table_line.update_line(color)
         time.sleep(1)
 
 
@@ -443,12 +504,15 @@ def main():
     settings = Settings()
     table = PingTable(root, (1, 0), settings)
     table.draw()
-    for i in range(10):
-        table.add(('hi', f'{i}.{i}.{i}.{i}'))
-    menu = Menu(root, table)
+    # for i in range(100):
+    #     table.add(('hi', f'{i}.{i}.{i}.{i}'))
+    main_menu = Menu(root, table)
     add_data_frame = AddDataFrame(root, (0, 0), table)
     add_data_frame.draw()
-    credit_label = tk.Label(root, text='Pinger++ by Yuval Kalanthroff', bg=GRAY)
+    blank_frame = tk.Frame(root)
+    blank_frame.grid(row=2, column=0)
+    tk.Label(blank_frame, text='').pack()
+    credit_label = tk.Label(root, text='Pinger++ by Yuval Kalanthroff', bd=1, relief=tk.SUNKEN)
     credit_label.place(relx=0.5, rely=1.0, anchor='s', relwidth=1.0)
     root.protocol('WM_DELETE_WINDOW', lambda: do_quit(root, settings, table))
     tk.mainloop()
