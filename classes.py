@@ -178,33 +178,34 @@ class Statistics:
 
 class ColorMaster:
     def __init__(self):
-        self._current_color = None
         self._log_line = None
-        self._last_colors = [None] * 2
-        self._current_is_changed_color = None
+        self._last_colors = [None] * 2   # len(last_colors) = amount of values to consider change (remove jitters)
+        self._last_change_color = None
 
     def update(self, color):
-        if self._current_color != color:
-            self._log_line = LOG_MODES[self._current_color][color] if color and self._current_color else None
         self.color = color
-        return self._log_line if self._is_changed else None
+        log_line = None
+        if self._is_changed:
+            if self._last_change_color and self.color:
+                log_line = LOG_MODES[self._last_change_color][self._last_colors[-1]]
+            self._last_change_color = self.color
+        return log_line
 
     @property
     def color(self):
-        return self._current_color
+        return self._last_colors[-1]
 
     @color.setter
     def color(self, color):
-        self._last_colors.append(self._current_color)
-        self._last_colors = self._last_colors[-2:]
-        self._current_color = color
+        # add the new color to the last_colors list and remove the last color
+        self._last_colors = (self._last_colors[1:] + [color])
 
     @property
     def _is_changed(self):
-        print(self._current_is_changed_color, self._last_colors, self._current_is_changed_color != self._last_colors[-1] and self._last_colors[-1] == self._last_colors[-2])
-        if self._current_is_changed_color != self._last_colors[-1] and self._last_colors[-1] == self._last_colors[-2]:
-            self._current_is_changed_color = self._last_colors[-1]
-            return True
+        # if all last_colors are the same
+        if all(color == self._last_colors[0] for color in self._last_colors):
+            # check if they different from the last_change_color
+            return self._last_colors[0] != self._last_change_color
         return False
 
 
