@@ -85,6 +85,11 @@ CONFIG_STATISTICS_CAPACITY = 'statistics capacity'
 class Settings:
     def __init__(self):
         self._running = True
+        self._root = None
+        self._tree_head_stl = None
+        self._tree_body_stl = None
+        self._normal_text_stl = None
+
         self._text_size = None
         self._ping_sleep_timer = None
         self._ping_timeout = None
@@ -102,6 +107,18 @@ class Settings:
     @running.setter
     def running(self, running):
         self._running = running
+
+    @property
+    def tree_head_stl(self):
+        return self._tree_head_stl
+
+    @property
+    def tree_body_stl(self):
+        return self._tree_body_stl
+
+    @property
+    def normal_text_stl(self):
+        return self._normal_text_stl
 
     @staticmethod
     def _read_settings_file():
@@ -129,8 +146,22 @@ class Settings:
             my_file.write(text)
 
     def reset_settings(self):
-        os.remove(SETTINGS_FILE)
-        self._read_settings_file()
+        try:
+            os.remove(SETTINGS_FILE)
+        except FileNotFoundError:
+            pass
+        self.config_params = self._read_settings_file()
+
+    def _set_config(self):
+        self._tree_head_stl = ttk.Style()
+        self._tree_head_stl.configure("Treeview.Heading", font=(DEF_TEXT_FONT, self.text_size * 2, 'bold'))
+
+        self._tree_body_stl = ttk.Style()
+        self._tree_body_stl.configure("Treeview", font=(DEF_TEXT_FONT, self.text_size, 'bold'),
+                                      rowheight=self.text_size * 2)
+
+        self._normal_text_stl = ttk.Style()
+        self._normal_text_stl.configure("TEntry", font=(DEF_TEXT_FONT, self.text_size, 'bold'))
 
     @property
     def text_size(self):
@@ -192,6 +223,12 @@ class Settings:
         self._ping_ttl = config_params[CONFIG_TTL]
         self._scroll_sensetivity = config_params[CONFIG_SCROLL_SENSITIVITY]
         self._statistics_capacity = config_params[CONFIG_STATISTICS_CAPACITY]
+        if self._root:
+            self._set_config()
+
+    def add_root(self, root):
+        self._root = root
+        self._set_config()
 
 
 settings = Settings()
@@ -201,11 +238,10 @@ class Text:
     def __init__(self, master, text, pos, color=DEF_TEXT_COLOR, bg_color=DEF_TEXT_BG_COLOR, size=settings.text_size):
         self._text = text
         self._color = color
-        self._size = size
         self._pos = pos
         self._bg_color = bg_color
         self._bg_color_changed = False
-        self._font = ('Arial', self._size)
+        self._font = (DEF_TEXT_FONT, size)
         self._widget = tk.Entry(master, fg=color, readonlybackground=bg_color, font=self._font, bd=0)
         self._widget.insert(0, text)
         self._widget.config(state='readonly')
@@ -880,9 +916,7 @@ def init_root():
 
 def main():
     root = init_root()
-    ttk.Style().configure("Treeview.Heading", font=(DEF_TEXT_FONT, settings.text_size * 2, 'bold'))
-    ttk.Style().configure("Treeview", font=(DEF_TEXT_FONT, settings.text_size, 'bold'),
-                          rowheight=settings.text_size * 2)
+    settings.add_root(root)
     table = PingTable(root, (1, 0))
     # for i in range(255):
     #     table.add(('hi', f'{i}.{i}.{i}.{i}'))
