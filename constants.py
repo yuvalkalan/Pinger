@@ -59,7 +59,7 @@ class RangeOf(enum.Enum):
     TEXT_SIZE = (1, 40)
     PING_SLEEP_TIMER = (500, 10000)
     PING_TIMEOUT = (500, 10000)
-    PING_BUFFER_SIZE = (32, 65527)
+    PING_BUFFER_SIZE = (32, 65500)
     PING_DF_FLAG = (0, 1)
     PING_TTL = (1, 255)
     NUM_OF_TABLES = (1, 5)
@@ -90,15 +90,6 @@ DEF_TEXT_BG_COLOR = None
 SCREEN_SIZE = '1000x500'
 DEF_SCREEN_TITLE = 'Untitled - Pinger++'
 
-ERROR_MSGS = ['destination host unreachable',
-              'request timed out',
-              'ping request could not find host',
-              'ping: transmit failed',
-              'general failure',
-              'ttl expired in transit',
-              'destination net unreachable',
-              'destination port unreachable',
-              'packet needs to be fragmented but df set']
 FILE_TYPES = (('Pinger Files (*.pngr)', '*.pngr'), ('All Files (*.*)', '*.*'))
 
 

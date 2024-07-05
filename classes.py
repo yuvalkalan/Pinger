@@ -7,6 +7,7 @@ import threading
 import time
 import subprocess
 import tkinter as tk
+import re
 
 
 class Settings:
@@ -649,7 +650,7 @@ class PingTableLine:
             self._my_window.title(f'{self.host_name} ({self.ip_address})')
             self._my_window.protocol('WM_DELETE_WINDOW', self.close_window)
 
-            self._text = tk.Text(self._my_window, height=6, width=40)
+            self._text = tk.Text(self._my_window, height=6, width=40, state='disabled')
             self._text.tag_config(Color.RED, background=Color.RED)
             self._text.tag_config(Color.YELLOW, background=Color.YELLOW)
             self._text.tag_config(Color.GREEN, background=Color.GREEN)
@@ -669,11 +670,14 @@ class PingTableLine:
         self._data = []
 
     def add_data_to_window(self):
-        while self._have_data:
-            data, color = self._data.pop(0)
-            self._text.insert(tk.END, data+'\n', color)
-            if self._check_btn_v.get():
-                self._text.see(tk.END)
+        if self._my_window:
+            self._text.config(state='normal')
+            while self._have_data:
+                data, color = self._data.pop(0)
+                self._text.insert(tk.END, data+'\n', color)
+                if self._check_btn_v.get():
+                    self._text.see(tk.END)
+            self._text.config(state='disabled')
 
     def kill(self):
         self._is_alive = False
@@ -719,10 +723,10 @@ class EditRow:
             self._my_window.destroy()
 
 
-class FloatInputbox(Text):
+class FloatInputBox(Text):
     def __init__(self, master: tk.Misc, text: str, pos, from_, to, jump_by=1, color=Color.BLACK,
                  bg_color=DEF_TEXT_BG_COLOR, size=Default.TEXT_SIZE.value):
-        super(FloatInputbox, self).__init__(master, text, pos, color, bg_color, size)
+        super(FloatInputBox, self).__init__(master, text, pos, color, bg_color, size)
         self._from = from_
         self._to = to
         validate_cmd = (master.register(self.validate), '%d', '%i', '%P', '%s', '%S', '%v', '%V', '%W')
@@ -751,7 +755,7 @@ class FloatInputbox(Text):
         self._widget.insert(0, text)
 
 
-class IntInputBox(FloatInputbox):
+class IntInputBox(FloatInputBox):
     def __init__(self, master: tk.Misc, text: str, pos, from_, to, jump_by=1, color=Color.BLACK,
                  bg_color=DEF_TEXT_BG_COLOR, size=Default.TEXT_SIZE.value):
         super(IntInputBox, self).__init__(master, text, pos, from_, to, jump_by, color, bg_color, size)
@@ -790,7 +794,7 @@ class BoolInputBox(IntInputBox):
     def value(self):
         v = self._widget.get()
         if v:
-            return 1 if bool(v) else 0
+            return 1 if v == 'True' else 0
         return None
 
 
@@ -817,7 +821,7 @@ class SettingsWindow:
         self._value_frame.grid(row=0, column=1, sticky=tk.NSEW)
         self._value_frame.grid_columnconfigure(0, weight=1)
 
-        self._items: Dict[str, FloatInputbox] = {}
+        self._items: Dict[str, FloatInputBox] = {}
         for i, (key, value) in enumerate(settings.config_params.items()):
             self._param_frame.grid_rowconfigure(i, weight=1)
             self._value_frame.grid_rowconfigure(i, weight=1)
@@ -865,7 +869,7 @@ class SettingsWindow:
 
 
 class AutoInsertWin:
-    def __init__(self, master, menu):
+    def __init__(self, master, menu, num_of_tables):
         self._master = master
         self._menu = menu
 
@@ -895,11 +899,17 @@ class AutoInsertWin:
         self._buttons_frame.grid(row=1, column=0, sticky=tk.NSEW)
         self._buttons_frame.grid_columnconfigure(0, weight=1)
         self._buttons_frame.grid_columnconfigure(1, weight=1)
+        self._buttons_frame.grid_columnconfigure(2, weight=1)
 
         self._cancel_btn = Button(self._buttons_frame, 'cancel', (0, 0), self._close_cmd)
         self._cancel_btn.draw(sticky=tk.EW)
         self._submit_btn = Button(self._buttons_frame, 'submit', (0, 1), self._submit_cmd)
         self._submit_btn.draw(sticky=tk.EW)
+
+        self._table_menu_options = [f'table {i + 1}' for i in range(num_of_tables)]
+        self._table_menu = ttk.Combobox(self._buttons_frame, values=self._table_menu_options, state='readonly')
+        self._table_menu.current(0)
+        self._table_menu.grid(row=0, column=2, sticky=tk.NSEW)
 
     def focus_set(self):
         self._my_window.focus_set()
@@ -909,8 +919,14 @@ class AutoInsertWin:
         self._my_window.destroy()
 
     def _submit_cmd(self):
-        self._menu.auto_insert([item.value for item in self._start_ip], [item.value for item in self._end_ip])
+        self._menu.auto_insert([item.value for item in self._start_ip],
+                               [item.value for item in self._end_ip],
+                               self._index)
         self._close_cmd()
+
+    @property
+    def _index(self):
+        return self._table_menu_options.index(self._table_menu.get())
 
 
 class Menu:
@@ -1026,15 +1042,15 @@ class Menu:
 
     def _auto_insert_cmd(self):
         if not self._auto_insert_win:
-            self._auto_insert_win = AutoInsertWin(self._master, self)
+            self._auto_insert_win = AutoInsertWin(self._master, self, len(self._tables))
         self._auto_insert_win.focus_set()
 
-    def auto_insert(self, start_ip, end_ip):
+    def auto_insert(self, start_ip, end_ip, table_index):
         for a in range(start_ip[0], end_ip[0] + 1):
             for b in range(start_ip[1], end_ip[1] + 1):
                 for c in range(start_ip[2], end_ip[2] + 1):
                     for d in range(start_ip[3], end_ip[3] + 1):
-                        self._tables[settings.table_adder].add(('auto', f'{a}.{b}.{c}.{d}'))
+                        self._tables[table_index].add(('auto', f'{a}.{b}.{c}.{d}'))
 
 
 class AddDataFrame:
@@ -1046,17 +1062,23 @@ class AddDataFrame:
         self._name_input = InputBox(self._frame, 'Host Name', (0, 0))
         self._ip_input = InputBox(self._frame, 'Ip Address', (0, 1))
         self._submit_button = Button(self._frame, 'Submit', (0, 2), self._submit_func)
-        for i in range(3):
+
+        self._table_menu_options = [f'table {i + 1}' for i in range(len(self._tables))]
+        self._table_menu = ttk.Combobox(self._frame, values=self._table_menu_options, state='readonly')
+        self._table_menu.current(0)
+
+        for i in range(4):
             self._frame.grid_columnconfigure(i, weight=1)
         row, column = self._pos
         self._frame.grid(row=row, column=column, sticky=tk.EW, columnspan=settings.num_of_tables)
         self._name_input.draw(sticky=tk.EW)
         self._ip_input.draw(sticky=tk.EW)
         self._submit_button.draw(sticky=tk.EW)
+        self._table_menu.grid(row=0, column=3, sticky=tk.NSEW)
 
     def _submit_func(self):
         if self._valid_data:
-            self._tables[settings.table_adder].add((self._name_input.value, self._ip_input.value))
+            self._tables[self._index].add((self._name_input.value, self._ip_input.value))
             self._master.focus_set()
             self._name_input.reset_text()
             self._ip_input.reset_text()
@@ -1075,6 +1097,10 @@ class AddDataFrame:
         msgbox.showerror('Error!', 'No Host Name Provided!')
         return False
 
+    @property
+    def _index(self):
+        return self._table_menu_options.index(self._table_menu.get())
+
 
 def valid_ip(ip):
     ip = ip.split('.')
@@ -1089,26 +1115,27 @@ def valid_ip(ip):
         return False
 
 
+def check_ping_response(output):
+    pattern = re.compile(r'reply from .+\..+\..+\..+: bytes=(.*) time[=<](.*)ms ttl=(.*)')
+    matches = pattern.finditer(output)
+    items = [item for item in matches]
+    if items:
+        item = items[0]
+        return output, int(item.group(1)), int(item.group(2)), int(item.group(3)), True
+    return output, 0, 0, 0, False
+
+
 def pinger_thread(table_line: PingTableLine):
     while settings.running and table_line.is_alive:
         ip = table_line.ip_address
         try:
             output = subprocess.getoutput(f'{settings.ping_command} {ip}')
             output = output.split('\n')[2].lower()
-            have_answer = [error_msg for error_msg in ERROR_MSGS if error_msg in output] == []
+            output, bytes_param, time_param, ttl_param, have_answer = check_ping_response(output)
         except Exception as e:
-            have_answer = False
-            output = str(e)
+            output, bytes_param, time_param, ttl_param, have_answer = str(e), 0, 0, 0, False
         if have_answer:
-            params = output.split(': ')[1].split(' ')
-            items = []
-            for item in params:
-                if 'bytes' in item or 'ttl' in item:
-                    items.append(int(item.split('=')[1]))
-                elif 'time' in item:
-                    items.append(int(item.split('=' if '=' in item else '<')[1].strip('ms')))
-            p_bytes, p_time, p_ttl = items
-            color = Color.YELLOW if p_time < settings.dock_time else Color.GREEN
+            color = Color.YELLOW if time_param < settings.dock_time else Color.GREEN
         else:
             color = Color.RED
         time_str = datetime.datetime.now().strftime('%d.%m.%y %H:%M:%S')
