@@ -1,18 +1,21 @@
 from tkinter import *
 
-root = Tk()
+m1 = PanedWindow()
+m1.pack(fill=BOTH, expand=1)
 
-m_frame = Frame(root)
-m_frame.pack(fill=BOTH, expand=1)
-my_canvas = Canvas(m_frame)
-my_canvas.pack(side=LEFT)
-scollbar = Scrollbar(m_frame, orient=VERTICAL, command=my_canvas.yview)
-scollbar.pack(side=RIGHT, fill=Y)
-my_canvas.config(yscrollcommand=scollbar.set)
-my_canvas.bind('<Configure>', lambda e: my_canvas.config(scrollregion=my_canvas.bbox('all')))
-sub_frame = Frame(my_canvas)
-my_canvas.create_window((0, 0), window=sub_frame, anchor='nw')
+left = Label(m1, text="left pane")
+m1.add(left)
 
-for _ in range(100):
-    Label(sub_frame, text='hi!').pack()
-root.mainloop()
+m1.paneconfig(left, minsize=200)
+
+m2 = PanedWindow(m1, orient=VERTICAL)
+m1.add(m2)
+
+top = Label(m2, text="top pane")
+m2.add(top)
+
+bottom = Label(m2, text="bottom pane")
+m2.add(bottom)
+
+
+mainloop()

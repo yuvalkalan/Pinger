@@ -16,8 +16,7 @@ BLUE: COLOR = '#0000FF'
 WHITE: COLOR = '#FFFFFF'
 YELLOW: COLOR = '#FFFF00'
 GRAY: COLOR = '#808080'
-
-DEF_TEXT_SIZE = 20
+DEF_TEXT_SIZE = 9
 
 DEF_TEXT_COLOR = None
 DEF_TEXT_BG_COLOR = None
@@ -40,7 +39,7 @@ CALCULATING = 'Calculating...'
 ONLINE = 'Online'
 OFFLINE = 'Offline'
 
-MOUSE_SCROLL_SENSITIVITY = 120
+SCROLL_SENSITIVITY = 120
 
 
 class Settings:
@@ -74,11 +73,8 @@ class Text:
         row, column = self._pos
         self._widget.grid(row=row, column=column, **kwargs)
 
-    def pack(self, pos=None):
-        if pos:
-            self._widget.pack(pos)
-        else:
-            self._widget.pack()
+    def pack(self, *args, **kwargs):
+        self._widget.pack(*args, **kwargs)
 
     @property
     def text(self):
@@ -106,6 +102,10 @@ class Text:
         res = self._bg_color_changed
         self._bg_color_changed = False
         return res
+
+    @property
+    def widget(self):
+        return self._widget
 
     def change_background(self):
         self._widget.config(readonlybackground=self._bg_color)
@@ -154,12 +154,13 @@ class InputBox(Text):
 
 
 class TableLine:
-    def __init__(self, table_frame, params: List[str], row_index):
-        self._table_frame = table_frame
+    def __init__(self, column_frames, params: List[str], row_index):
+        self._column_frames = column_frames
         self._params: List[Text] = []
         for i, p in enumerate(params):
-            item = Text(table_frame, p, (row_index, i), bg_color=WHITE)
+            item = Text(column_frames[i], p, (row_index, 0), bg_color=WHITE)
             self._params.append(item)
+        self.draw(sticky=tk.EW, padx=2, pady=2)
 
     def draw(self, **kwargs):
         for param in self._params:
@@ -190,46 +191,47 @@ class Table:
         self._main_frame.grid_columnconfigure(0, weight=1)
         self._main_frame.grid_rowconfigure(0, weight=1)
         # put canvas and scrollbar insize main frame
-        self._canvas = tk.Canvas(self._main_frame)
+        self._canvas = tk.Canvas(self._main_frame, bg=GREEN)
         self._canvas.grid(row=0, column=0, sticky=tk.NSEW)
         self._scrollbar = tk.Scrollbar(self._main_frame, orient=tk.VERTICAL, command=self._canvas.yview)
         self._scrollbar.grid(row=0, column=1, sticky=tk.NS)
         # config canvas
         self._canvas.config(yscrollcommand=self._scrollbar.set)
-        self._frame = tk.Frame(self._canvas, bg=BLACK)
+        self._frame = tk.Frame(self._canvas, bg='blue')
         self._canvas_frame = self._canvas.create_window((0, 0), window=self._frame, anchor='nw')
         self._canvas.bind('<Configure>', self._canvas_config)
-        self._canvas.bind_all('<MouseWheel>',
-                              lambda e: self._canvas.yview_scroll(-1*(e.delta//MOUSE_SCROLL_SENSITIVITY), 'units'))
+        self._canvas.bind_all('<MouseWheel>', lambda e: self._canvas.yview_scroll(-1*(e.delta//SCROLL_SENSITIVITY),
+                                                                                  'units'))
 
         self._master = master
         self._titles = []
+        self._column_frames = []
+        self._pw = tk.PanedWindow(self._frame, orient=tk.HORIZONTAL, bg='red')
+        self._pw.grid_columnconfigure(0, weight=1)
+        self._pw.grid_rowconfigure(0, weight=1)
+        self._pw.pack(fill=tk.BOTH, expand=1)
         for index, title in enumerate(titles):
-            self._titles.append(Text(self._frame, title, (0, index), size=2 * DEF_TEXT_SIZE))
-            self._frame.grid_columnconfigure(index, weight=1)
+            new_frame = tk.Frame(self._pw, bg=BLACK)
+            new_frame.grid_columnconfigure(0, weight=1)
+            new_frame.grid_rowconfigure(0, weight=1)
+            self._pw.add(new_frame)
+            self._column_frames.append(new_frame)
+            title_obj = Text(new_frame, title, (0, 0), size=2 * DEF_TEXT_SIZE)
+            title_obj.draw(sticky=tk.EW, padx=2, pady=2)
+            self._titles.append(title_obj)
         self._lines: List[TableLine] = []
 
-    def _canvas_config(self, e):
+    def _canvas_config(self, e: tk.Event):
         self._canvas.itemconfig(self._canvas_frame, width=e.width)
         self._canvas.config(scrollregion=self._canvas.bbox('all'))
 
     def add(self, line):
-        self._lines.append(TableLine(self._frame, line, len(self._lines)))
-        self._update_draw()
-
-    def draw(self):
-        for title in self._titles:
-            title.draw(sticky=tk.EW, padx=2, pady=2)
-        for value in self._lines:
-            value.draw(sticky=tk.EW, padx=2, pady=2)
-
-    def _update_draw(self):
-        self._lines[-1].draw(sticky=tk.EW, padx=2, pady=2)
+        self._lines.append(TableLine(self._column_frames, line, len(self._lines)))
 
 
 class PingTableLine(TableLine):
-    def __init__(self, master, table_frame, host_name, ip_address, row_index):
-        super(PingTableLine, self).__init__(table_frame, [host_name, ip_address, CALCULATING, '?%'], row_index)
+    def __init__(self, master, column_frames, host_name, ip_address, row_index):
+        super(PingTableLine, self).__init__(column_frames, [host_name, ip_address, CALCULATING, '?%'], row_index)
         self._my_window: Optional[tk.Toplevel] = None
         self._master = master
         self._data: List[Tuple[str, COLOR]] = []
@@ -331,9 +333,8 @@ class PingTable(Table):
 
     def add(self, host_name_and_ip_address):
         name, ip = host_name_and_ip_address
-        new_line = PingTableLine(self._master, self._frame, name, ip, len(self._lines) + 1)
+        new_line = PingTableLine(self._master, self._column_frames, name, ip, len(self._lines) + 1)
         self._lines.append(new_line)
-        self._update_draw()
         thread = threading.Thread(target=pinger_thread, args=[new_line, self._settings])
         self._ping_threads.append(thread)
         thread.start()
@@ -503,7 +504,6 @@ def main():
     root.grid_columnconfigure(0, weight=1)
     settings = Settings()
     table = PingTable(root, (1, 0), settings)
-    table.draw()
     # for i in range(100):
     #     table.add(('hi', f'{i}.{i}.{i}.{i}'))
     main_menu = Menu(root, table)
