@@ -2,9 +2,9 @@ import datetime
 import subprocess
 import threading
 import time
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
 import tkinter as tk
-from tkinter import filedialog as fd, messagebox as msgbox
+from tkinter import filedialog as fd, messagebox as msgbox, ttk
 
 COLOR = str
 POSITION = Tuple[int, int]
@@ -16,7 +16,9 @@ BLUE: COLOR = '#0000FF'
 WHITE: COLOR = '#FFFFFF'
 YELLOW: COLOR = '#FFFF00'
 GRAY: COLOR = '#808080'
-DEF_TEXT_SIZE = 9
+
+DEF_TEXT_SIZE = 12
+DEF_TEXT_FONT = 'Helvetica'
 
 DEF_TEXT_COLOR = None
 DEF_TEXT_BG_COLOR = None
@@ -33,6 +35,19 @@ ERROR_MSGS = ['destination host unreachable',
               'destination port unreachable']
 FILE_TYPES = (('Pinger Files (*.pngr)', '*.pngr'), ('All Files (*.*)', '*.*'))
 
+SHIFT = 'SHIFT'
+CAPS_LOCK = 'CAPS_LOCK'
+CTRL = 'CTRL'
+LEFT_ALT = 'LEFT_ALT'
+MUN_LOCK = 'MUN_LOCK'
+RIGHT_ALT = 'RIGHT_ALT'
+MOUSE_LEFT = 'MOUSE_LEFT'
+MOUSE_MID = 'MOUSE_MID'
+MOUSE_RIGHT = 'MOUSE_RIGHT'
+SCROLL_LOCK = 'SCROLL_LOCK'
+MODIFIER_KEYS = {SHIFT: 1, CAPS_LOCK: 2, CTRL: 4, MUN_LOCK: 8, SCROLL_LOCK: 32, MOUSE_LEFT: 256, MOUSE_MID: 512,
+                 MOUSE_RIGHT: 1048, LEFT_ALT: 131072, RIGHT_ALT: 131080}
+
 DOCK_PARAM = 100
 
 CALCULATING = 'Calculating...'
@@ -40,6 +55,7 @@ ONLINE = 'Online'
 OFFLINE = 'Offline'
 
 SCROLL_SENSITIVITY = 120
+STATISTICS_AMOUNT = 100
 
 
 class Settings:
@@ -153,110 +169,111 @@ class InputBox(Text):
         return self._changed
 
 
-class TableLine:
-    def __init__(self, column_frames, params: List[str], row_index):
-        self._column_frames = column_frames
-        self._params: List[Text] = []
-        for i, p in enumerate(params):
-            item = Text(column_frames[i], p, (row_index, 0), bg_color=WHITE)
-            self._params.append(item)
-        self.draw(sticky=tk.EW, padx=2, pady=2)
-
-    def draw(self, **kwargs):
-        for param in self._params:
-            param.draw(**kwargs)
-
-    def destroy(self):
-        for param in self._params:
-            param.destroy()
-
-    @property
-    def bg_color(self):
-        return self._params[0].bg_color
-
-    @bg_color.setter
-    def bg_color(self, color):
-        for param in self._params:
-            param.bg_color = color
-
-
 class Table:
     def __init__(self, master: tk.Misc, titles, pos):
         row, column = pos
         # make table resizable
         master.grid_rowconfigure(row, weight=1)
-        # create resizable main frame
-        self._main_frame = tk.Frame(master)
-        self._main_frame.grid(row=row, column=column, sticky=tk.NSEW)
-        self._main_frame.grid_columnconfigure(0, weight=1)
-        self._main_frame.grid_rowconfigure(0, weight=1)
-        # put canvas and scrollbar insize main frame
-        self._canvas = tk.Canvas(self._main_frame, bg=GREEN)
-        self._canvas.grid(row=0, column=0, sticky=tk.NSEW)
-        self._scrollbar = tk.Scrollbar(self._main_frame, orient=tk.VERTICAL, command=self._canvas.yview)
-        self._scrollbar.grid(row=0, column=1, sticky=tk.NS)
-        # config canvas
-        self._canvas.config(yscrollcommand=self._scrollbar.set)
-        self._frame = tk.Frame(self._canvas, bg='blue')
-        self._canvas_frame = self._canvas.create_window((0, 0), window=self._frame, anchor='nw')
-        self._canvas.bind('<Configure>', self._canvas_config)
-        self._canvas.bind_all('<MouseWheel>', lambda e: self._canvas.yview_scroll(-1*(e.delta//SCROLL_SENSITIVITY),
-                                                                                  'units'))
-
         self._master = master
-        self._titles = []
-        self._column_frames = []
-        self._pw = tk.PanedWindow(self._frame, orient=tk.HORIZONTAL, bg='red')
-        self._pw.grid_columnconfigure(0, weight=1)
-        self._pw.grid_rowconfigure(0, weight=1)
-        self._pw.pack(fill=tk.BOTH, expand=1)
-        for index, title in enumerate(titles):
-            new_frame = tk.Frame(self._pw, bg=BLACK)
-            new_frame.grid_columnconfigure(0, weight=1)
-            new_frame.grid_rowconfigure(0, weight=1)
-            self._pw.add(new_frame)
-            self._column_frames.append(new_frame)
-            title_obj = Text(new_frame, title, (0, 0), size=2 * DEF_TEXT_SIZE)
-            title_obj.draw(sticky=tk.EW, padx=2, pady=2)
-            self._titles.append(title_obj)
-        self._lines: List[TableLine] = []
+        self._frame = tk.Frame(master, bg='red')
+        self._frame.grid_columnconfigure(0, weight=1)
+        self._frame.grid_rowconfigure(0, weight=1)
+        self._frame.grid(row=row, column=column, sticky=tk.NSEW)
+        # create tree
+        self._tree = ttk.Treeview(self._frame, columns=titles, show='headings')
+        for column in titles:
+            self._tree.heading(column, text=column)
+        self._tree.grid(row=0, column=0, sticky=tk.NSEW)
+        # add a scrollbar
+        self._scrollbar = ttk.Scrollbar(self._frame, orient=tk.VERTICAL, command=self._tree.yview)
+        self._tree.configure(yscrollcommand=self._scrollbar.set)
+        self._scrollbar.grid(row=0, column=1, sticky='ns')
+        self._menu = tk.Menu(self._frame, tearoff=False)
+        self._menu.add_command(label='remove', command=self._remove_cmd)
+        self._menu.add_command(label='edit name', command=self._edit_name_cmd)
+        self._menu.add_command(label='pause', command=self._pause_cmd)
+        self._menu.add_command(label='forward', command=self._forward_cmd)
+        self._menu.add_command(label='backward', command=self._backward_cmd)
+        self._tree.bind('<Button-3>', lambda e: self._menu.tk_popup(e.x_root, e.y_root))
 
-    def _canvas_config(self, e: tk.Event):
-        self._canvas.itemconfig(self._canvas_frame, width=e.width)
-        self._canvas.config(scrollregion=self._canvas.bbox('all'))
+    def _popup_menu(self, event):
+        iid = self._tree.identify_row(event.y)
+        if iid:
+            self._tree.selection_set(iid)
+
+    def _remove_cmd(self):
+        for iid in self._tree.selection():
+            self._tree.delete(iid)
+
+    def _edit_name_cmd(self):
+        pass
+
+    def _pause_cmd(self):
+        pass
+
+    def _forward_cmd(self):
+        pass
+
+    def _backward_cmd(self):
+        pass
 
     def add(self, line):
-        self._lines.append(TableLine(self._column_frames, line, len(self._lines)))
+        return self._tree.insert('', tk.END, values=line)
 
 
-class PingTableLine(TableLine):
-    def __init__(self, master, column_frames, host_name, ip_address, row_index):
-        super(PingTableLine, self).__init__(column_frames, [host_name, ip_address, CALCULATING, '?%'], row_index)
+class Statistics:
+    def __init__(self):
+        self._values = []
+        self._index = 0
+
+    def __iadd__(self, other):
+        value = 1 if other else 0
+        if len(self._values) < STATISTICS_AMOUNT:
+            self._values.append(value)
+        else:
+            self._values[self._index] = value
+            self._index = (self._index + 1) % len(self._values)
+        return self
+
+    @property
+    def value(self):
+        if self._values:
+            return str(round((sum(self._values) / len(self._values)) * 100)).zfill(3) + '%'
+        return '???%'
+
+
+class PingTableLine:
+    def __init__(self, root, table, host_name, ip_address, index):
+        self._root = root
+        self._table = table
+        self._host_name = host_name
+        self._ip_address = ip_address
+        self._index = index
+
         self._my_window: Optional[tk.Toplevel] = None
-        self._master = master
         self._data: List[Tuple[str, COLOR]] = []
+
+        self._color = None
+        self._statistics = Statistics()
         self._status = CALCULATING
         self._last_status_change = datetime.datetime.now()
-        self._tries_counter = 0
-        self._success_couner = 0
-        for line in self._params:
-            line.bind('<Double-Button-1>', self.create_window)
+        self._is_alive = True
 
     @property
-    def host_name(self) -> Text:
-        return self._params[0]
+    def _have_window(self):
+        return self._my_window is not None
 
     @property
-    def ip_address(self) -> Text:
-        return self._params[1]
+    def _have_data(self):
+        return self._data != []
 
     @property
-    def status_obj(self) -> Text:
-        return self._params[2]
+    def host_name(self):
+        return self._host_name
 
     @property
-    def statistics_obj(self) -> Text:
-        return self._params[3]
+    def ip_address(self):
+        return self._ip_address
 
     @property
     def status(self):
@@ -272,44 +289,41 @@ class PingTableLine(TableLine):
 
     @property
     def statistics(self):
-        if self._tries_counter:
-            return str(round((self._success_couner / self._tries_counter) * 100)).zfill(3) + '%'
-        return '???%'
+        return self._statistics.value
 
     @property
-    def _have_window(self):
-        return self._my_window is not None
+    def is_alive(self):
+        return self._is_alive
 
     @property
-    def _have_data(self):
-        return self._data != []
+    def values(self):
+        return self._index, self._color, self._host_name, self._ip_address, self.status, self.statistics
 
     def add_data(self, data, color):
         if self._have_window:
             self._data.append((data, color))
 
     def update_line(self, color):
-        self._tries_counter += 1
-        self.bg_color = color
+        """
+        מעדכן נתונים
+        :param color:
+        :return:
+        """
+        self._color = color
         if color == GREEN:
             if self._status == OFFLINE or CALCULATING:
                 self.status = ONLINE
-            self._success_couner += 1
+            self._statistics += True
         else:
             if self._status == ONLINE or CALCULATING:
                 self.status = OFFLINE
+            self._statistics += False
 
-    def submit_updates(self):
-        for param in self._params:
-            param.change_background()
-        self.status_obj.text = self.status
-        self.statistics_obj.text = self.statistics
-
-    def create_window(self, _):
+    def create_window(self):
         if not self._have_window:
-            self._my_window = tk.Toplevel(self._master, bg=GRAY)
+            self._my_window = tk.Toplevel(self._root, bg=GRAY)
             self._my_window.geometry('750x250')
-            self._my_window.title(f'{self.host_name.text} ({self.ip_address.text})')
+            self._my_window.title(f'{self.host_name} ({self.ip_address})')
             self._my_window.protocol('WM_DELETE_WINDOW', self.close_window)
         self._my_window.focus_set()
 
@@ -323,18 +337,47 @@ class PingTableLine(TableLine):
             data, color = self._data.pop(0)
             tk.Label(self._my_window, text=data, fg=color, bg=GRAY).pack(anchor=tk.W)
 
+    def kill(self):
+        self._is_alive = False
+
 
 class PingTable(Table):
     def __init__(self, master: tk.Misc, pos, settings):
         super(PingTable, self).__init__(master, ('Host Name', 'Ip Address', 'Status', 'Statistics (%)'), pos)
+        self._settings = settings
         self._master.after(100, self._check_pingers)
         self._ping_threads: List[threading.Thread] = []
-        self._settings = settings
+        self._item_indexes: Dict[str, PingTableLine] = {}
+
+        self._tree.tag_configure(GREEN, background=GREEN)
+        self._tree.tag_configure(YELLOW, background=YELLOW)
+        self._tree.tag_configure(RED, background=RED)
+        self._tree.bind('<Double-Button-1>', self._open_sub_window)
+        self._tree.bind('<KeyPress>', self._check_keypress)
+
+    def _remove_cmd(self):
+        for iid in self._tree.selection():
+            self._tree.delete(iid)
+            self._item_indexes.pop(iid).kill()
+
+    def _open_sub_window(self, event: tk.Event):
+        pressed_keys = check_keyboard(event)
+        if not pressed_keys[CTRL]:
+            iids = self._tree.selection()
+            if len(iids) == 1:
+                line = self._item_indexes[iids[0]]
+                line.create_window()
+
+    def _check_keypress(self, event: tk.Event):
+        pressed_keys = check_keyboard(event)
+        if event.keycode == ord('A') and pressed_keys[CTRL]:
+            self._tree.selection_set(self._tree.get_children())
 
     def add(self, host_name_and_ip_address):
         name, ip = host_name_and_ip_address
-        new_line = PingTableLine(self._master, self._column_frames, name, ip, len(self._lines) + 1)
-        self._lines.append(new_line)
+        index = super(PingTable, self).add([name, ip, CALCULATING, '?%'])
+        new_line = PingTableLine(self._master, self, name, ip, index)
+        self._item_indexes[index] = new_line
         thread = threading.Thread(target=pinger_thread, args=[new_line, self._settings])
         self._ping_threads.append(thread)
         thread.start()
@@ -344,23 +387,28 @@ class PingTable(Table):
             thread.join()
 
     def reset(self):
-        self._settings.running = False
-        self.join()
-        self._ping_threads = []
-        self._settings.running = True
-        for value in self._lines:
-            value.destroy()
-        self._lines: List[PingTableLine] = []
+        for line in self._item_indexes.values():
+            line.kill()
+        for i in self._tree.get_children():
+            self._tree.delete(i)
+        self._item_indexes = {}
+
+    def _submit_updates(self, index, color, name, ip, status, statistics):
+        self._tree.delete(index)
+        self._tree.insert('', tk.END, iid=index, values=[name, ip, status, statistics], tags=[color])
 
     def _check_pingers(self):
-        for line in self._lines:
-            line.submit_updates()
+        selections = self._tree.selection()
+        for iid in self._item_indexes:
+            line = self._item_indexes[iid]
+            self._submit_updates(*line.values)
             line.add_data_to_window()
+        self._tree.selection_set(selections)
         self._master.after(100, self._check_pingers)
 
     @property
     def items(self):
-        return [(line.host_name.text, line.ip_address.text) for line in self._lines]
+        return [(line.host_name, line.ip_address) for line in self._item_indexes.values()]
 
 
 class Menu:
@@ -377,12 +425,18 @@ class Menu:
         self._main_menu.add_cascade(label='settings', menu=self._settings_menu)
 
         self._file_menu.add_command(label='open', command=self._open_file_cmd)
+        self._file_menu.add_command(label='new', command=self._new_file_cmd)
         self._file_menu.add_separator()
         self._file_menu.add_command(label='save', command=self._save_file_cmd)
         self._file_menu.entryconfig('save', state='normal' if self._file_name else 'disable')
         self._file_menu.add_command(label='save as', command=self._save_as_file_cmd)
 
         self._settings_menu.add_command(label='text size', command=self._text_size_cmd)
+
+    def _new_file_cmd(self):
+        self._file_name = ''
+        self._table.reset()
+        self._file_menu.entryconfig('save', state='disable')
 
     def _open_file_cmd(self):
         self._file_name = fd.askopenfilename(title='Open File', filetypes=FILE_TYPES, defaultextension='.pngr')
@@ -458,9 +512,18 @@ class AddDataFrame:
         return False
 
 
+def check_keyboard(key_event: tk.Event):
+    state = key_event.state
+    active_keys = {item: False for item in MODIFIER_KEYS}
+    for key, value in MODIFIER_KEYS.items():
+        if (state & value) != 0:
+            active_keys[key] = True
+    return active_keys
+
+
 def pinger_thread(table_line: PingTableLine, settings: Settings):
-    ip = table_line.ip_address.text
-    while settings.running:
+    ip = table_line.ip_address
+    while settings.running and table_line.is_alive:
         output = subprocess.getoutput(f'ping {ip} -n 1')
         output = output.split('\n')[2].lower()
         have_answer = [error_msg for error_msg in ERROR_MSGS if error_msg in output] == []
@@ -497,15 +560,22 @@ def do_quit(root, settings, table):
     root.destroy()
 
 
-def main():
+def init_root():
     root = tk.Tk()
     root.geometry(SCREEN_SIZE)
     root.title(SCREEN_TITLE)
     root.grid_columnconfigure(0, weight=1)
+    return root
+
+
+def main():
+    root = init_root()
+    ttk.Style().configure("Treeview.Heading", font=(DEF_TEXT_FONT, DEF_TEXT_SIZE * 2, 'bold'))
+    ttk.Style().configure("Treeview", font=(DEF_TEXT_FONT, DEF_TEXT_SIZE, 'bold'), rowheight=DEF_TEXT_SIZE * 2)
     settings = Settings()
     table = PingTable(root, (1, 0), settings)
-    # for i in range(100):
-    #     table.add(('hi', f'{i}.{i}.{i}.{i}'))
+    for i in range(100):
+        table.add(('hi', f'{i}.{i}.{i}.{i}'))
     main_menu = Menu(root, table)
     add_data_frame = AddDataFrame(root, (0, 0), table)
     add_data_frame.draw()
