@@ -355,10 +355,21 @@ class PingTable(Table):
         self._tree.bind('<Double-Button-1>', self._open_sub_window)
         self._tree.bind('<KeyPress>', self._check_keypress)
 
+        self._have_changed = False
+
+    @property
+    def have_changed(self):
+        return self._have_changed
+
+    @have_changed.setter
+    def have_changed(self, value):
+        self._have_changed = value
+
     def _remove_cmd(self):
         for iid in self._tree.selection():
             self._tree.delete(iid)
             self._item_indexes.pop(iid).kill()
+        self._have_changed = True
 
     def _open_sub_window(self, event: tk.Event):
         pressed_keys = check_keyboard(event)
@@ -375,9 +386,13 @@ class PingTable(Table):
 
     def add(self, host_name_and_ip_address):
         name, ip = host_name_and_ip_address
+
         index = super(PingTable, self).add([name, ip, CALCULATING, '?%'])
         new_line = PingTableLine(self._master, self, name, ip, index)
         self._item_indexes[index] = new_line
+
+        self._have_changed = True
+
         thread = threading.Thread(target=pinger_thread, args=[new_line, self._settings])
         self._ping_threads.append(thread)
         thread.start()
@@ -424,48 +439,63 @@ class Menu:
         self._main_menu.add_cascade(label='file', menu=self._file_menu)
         self._main_menu.add_cascade(label='settings', menu=self._settings_menu)
 
-        self._file_menu.add_command(label='open', command=self._open_file_cmd)
-        self._file_menu.add_command(label='new', command=self._new_file_cmd)
+        self._file_menu.add_command(label='open', command=self.open_file_cmd)
+        self._file_menu.add_command(label='new', command=self.new_file_cmd)
         self._file_menu.add_separator()
-        self._file_menu.add_command(label='save', command=self._save_file_cmd)
+        self._file_menu.add_command(label='save', command=self.save_file_cmd)
         self._file_menu.entryconfig('save', state='normal' if self._file_name else 'disable')
-        self._file_menu.add_command(label='save as', command=self._save_as_file_cmd)
+        self._file_menu.add_command(label='save as', command=self.save_as_file_cmd)
 
         self._settings_menu.add_command(label='text size', command=self._text_size_cmd)
 
-    def _new_file_cmd(self):
-        self._file_name = ''
-        self._table.reset()
-        self._file_menu.entryconfig('save', state='disable')
+    @property
+    def file_name(self):
+        return self._file_name
 
-    def _open_file_cmd(self):
-        self._file_name = fd.askopenfilename(title='Open File', filetypes=FILE_TYPES, defaultextension='.pngr')
-        if self._file_name:
-            try:
-                with open(self._file_name, 'r') as my_file:
-                    content = my_file.read()
-                content = content.split('\n')[:-1]
-                content = [item.split('->') for item in content]
-                self._table.reset()
-                for item in content:
-                    self._table.add(item)
-                self._file_menu.entryconfig('save', state='normal')
-            except Exception as e:
-                msgbox.showerror('Error!', f'can\'t open file! {e}')
+    def new_file_cmd(self):
+        if ask_for_save(self._table, self):
+            self._file_name = ''
+            self._table.reset()
+            self._file_menu.entryconfig('save', state='disable')
 
-    def _save_file_cmd(self):
+    def open_file_cmd(self):
+        if ask_for_save(self._table, self):
+            self._file_name = fd.askopenfilename(title='Open File', filetypes=FILE_TYPES, defaultextension='.pngr')
+            if self._file_name:
+                try:
+                    with open(self._file_name, 'r') as my_file:
+                        content = my_file.read()
+                    content = content.split('\n')[:-1]
+                    content = [item.split('->') for item in content]
+                    self._table.reset()
+                    for item in content:
+                        self._table.add(item)
+                    self._table.have_changed = False
+                    self._file_menu.entryconfig('save', state='normal')
+                    return True
+                except Exception as e:
+                    msgbox.showerror('Error!', f'can\'t open file! {e}')
+        return False
+
+    def save_file_cmd(self):
         if self._file_name:
             with open(self._file_name, 'w+') as my_file:
                 for host, ip in self._table.items:
                     my_file.write(f'{host}->{ip}\n')
+            self._table.have_changed = False
+            return True
+        return False
 
-    def _save_as_file_cmd(self):
+    def save_as_file_cmd(self):
         filename = fd.asksaveasfilename(title='Save File', filetypes=FILE_TYPES, defaultextension='.pngr')
         if filename:
             with open(filename, 'w+') as my_file:
                 for host, ip in self._table.items:
                     my_file.write(f'{host}->{ip}\n')
             self._file_menu.entryconfig('save', state='normal')
+            self._table.have_changed = False
+            return True
+        return False
 
     def _text_size_cmd(self):
         pass
@@ -530,9 +560,9 @@ def pinger_thread(table_line: PingTableLine, settings: Settings):
         if have_answer:
             params = output.split(': ')[1]
             p_bytes, p_time, p_ttl = params.split(' ')
-            p_bytes = int(p_bytes.split('=')[1])
+            # p_bytes = int(p_bytes.split('=')[1])
             p_time = int(p_time.split('=' if '=' in p_time else '<')[1].strip('ms'))
-            p_ttl = int(p_ttl.split('=')[1])
+            # p_ttl = int(p_ttl.split('=')[1])
             color = YELLOW if p_time < DOCK_PARAM else GREEN
         else:
             color = RED
@@ -554,15 +584,31 @@ def valid_ip(ip):
         return False
 
 
-def do_quit(root, settings, table):
-    settings.running = False
-    table.join()
-    root.destroy()
+def ask_for_save(table, main_menu):
+    if table.have_changed:
+        msg_box = msgbox.askyesnocancel('Save Changes', 'Do you want to save changes?')
+        if msg_box in [True, False]:
+            if msg_box is True:
+                if main_menu.file_name:
+                    main_menu.save_file_cmd()
+                else:
+                    if not main_menu.save_as_file_cmd():
+                        return False
+        else:
+            return False
+    return True
+
+
+def do_quit(root, settings, table, main_menu):
+    if ask_for_save(table, main_menu):
+        settings.running = False
+        table.join()
+        root.destroy()
 
 
 def init_root():
     root = tk.Tk()
-    root.geometry(SCREEN_SIZE)
+    # root.geometry(SCREEN_SIZE)
     root.title(SCREEN_TITLE)
     root.grid_columnconfigure(0, weight=1)
     return root
@@ -574,8 +620,8 @@ def main():
     ttk.Style().configure("Treeview", font=(DEF_TEXT_FONT, DEF_TEXT_SIZE, 'bold'), rowheight=DEF_TEXT_SIZE * 2)
     settings = Settings()
     table = PingTable(root, (1, 0), settings)
-    for i in range(100):
-        table.add(('hi', f'{i}.{i}.{i}.{i}'))
+    # for i in range(255):
+    #     table.add(('hi', f'{i}.{i}.{i}.{i}'))
     main_menu = Menu(root, table)
     add_data_frame = AddDataFrame(root, (0, 0), table)
     add_data_frame.draw()
@@ -584,7 +630,7 @@ def main():
     tk.Label(blank_frame, text='').pack()
     credit_label = tk.Label(root, text='Pinger++ by Yuval Kalanthroff', bd=1, relief=tk.SUNKEN)
     credit_label.place(relx=0.5, rely=1.0, anchor='s', relwidth=1.0)
-    root.protocol('WM_DELETE_WINDOW', lambda: do_quit(root, settings, table))
+    root.protocol('WM_DELETE_WINDOW', lambda: do_quit(root, settings, table, main_menu))
     tk.mainloop()
 
 
