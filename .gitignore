@@ -166,3 +166,5 @@ settings.txt
 
 # .pngr files
 *.pngr
+# log file
+log.txt

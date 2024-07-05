@@ -180,7 +180,8 @@ class ColorMaster:
     def __init__(self):
         self._current_color = None
         self._log_line = None
-        self._last_colors = [None] * 3
+        self._last_colors = [None] * 2
+        self._current_is_changed_color = None
 
     def update(self, color):
         if self._current_color != color:
@@ -195,12 +196,16 @@ class ColorMaster:
     @color.setter
     def color(self, color):
         self._last_colors.append(self._current_color)
-        self._last_colors = self._last_colors[-4:]
+        self._last_colors = self._last_colors[-2:]
         self._current_color = color
 
     @property
     def _is_changed(self):
-        return self._last_colors[-1] == self._last_colors[-2] and self._last_colors[-1] not in self._last_colors[-4:-2]
+        print(self._current_is_changed_color, self._last_colors, self._current_is_changed_color != self._last_colors[-1] and self._last_colors[-1] == self._last_colors[-2])
+        if self._current_is_changed_color != self._last_colors[-1] and self._last_colors[-1] == self._last_colors[-2]:
+            self._current_is_changed_color = self._last_colors[-1]
+            return True
+        return False
 
 
 class PingTableLine:
