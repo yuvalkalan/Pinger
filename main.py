@@ -1,4 +1,5 @@
 import datetime
+import os
 import subprocess
 import threading
 import time
@@ -17,7 +18,6 @@ WHITE: COLOR = '#FFFFFF'
 YELLOW: COLOR = '#FFFF00'
 GRAY: COLOR = '#808080'
 
-DEF_TEXT_SIZE = 12
 DEF_TEXT_FONT = 'Helvetica'
 
 DEF_TEXT_COLOR = None
@@ -59,21 +59,41 @@ ONLINE = 'Online'
 OFFLINE = 'Offline'
 PAUSED = 'Paused'
 
-SCROLL_SENSITIVITY = 120
-STATISTICS_CAPACITY = 100
+DEF_SCROLL_SENSITIVITY = 120
+DEF_STATISTICS_CAPACITY = 100
 
-PING_SLEEP_TIMER = 1
-PING_TIMEOUT = 2
-PING_BUFFER_SIZE = 32
-PING_DF_FLAG = False
-PING_TTL = 128
+DEF_TEXT_SIZE = 12
 
-PING_COMMAND = f'ping -n 1 -l {PING_BUFFER_SIZE} {"-f" if PING_DF_FLAG else""} -i {PING_TTL} -w {PING_TIMEOUT*1000}'
+DEF_PING_SLEEP_TIMER = 1
+DEF_PING_TIMEOUT = 2
+DEF_PING_BUFFER_SIZE = 32
+DEF_PING_DF_FLAG = 0
+DEF_PING_TTL = 128
+
+SETTINGS_FILE = 'settings.txt'
+
+CONFIG_TEXT_SIZE = 'text size'
+CONFIG_SLEEP_TIMER = 'ping sleep timer (sec)'
+CONFIG_TIMEOUT = 'ping timeout (sec)'
+CONFIG_BUFFER_SIZE = 'ping buffer size (bytes)'
+CONFIG_DF_FLAG = 'ping df flag (0/1)'
+CONFIG_TTL = 'ping ttl'
+CONFIG_SCROLL_SENSITIVITY = 'scroll sensetivity'
+CONFIG_STATISTICS_CAPACITY = 'statistics capacity'
 
 
 class Settings:
     def __init__(self):
         self._running = True
+        self._text_size = None
+        self._ping_sleep_timer = None
+        self._ping_timeout = None
+        self._ping_buffer_size = None
+        self._ping_df_flag = None
+        self._ping_ttl = None
+        self._scroll_sensetivity = None
+        self._statistics_capacity = None
+        self.config_params = self._read_settings_file()
 
     @property
     def running(self):
@@ -83,9 +103,102 @@ class Settings:
     def running(self, running):
         self._running = running
 
+    @staticmethod
+    def _read_settings_file():
+        items = {}
+        try:
+            with open(SETTINGS_FILE, 'r') as my_file:
+                for line in my_file:
+                    key, value = line.split('=')
+                    items[key] = int(value)
+        except (OSError, ValueError):
+            items = {CONFIG_TEXT_SIZE: DEF_TEXT_SIZE,
+                     CONFIG_SLEEP_TIMER: DEF_PING_SLEEP_TIMER,
+                     CONFIG_TIMEOUT: DEF_PING_TIMEOUT,
+                     CONFIG_BUFFER_SIZE: DEF_PING_BUFFER_SIZE,
+                     CONFIG_DF_FLAG: DEF_PING_DF_FLAG,
+                     CONFIG_TTL: DEF_PING_TTL,
+                     CONFIG_SCROLL_SENSITIVITY: DEF_SCROLL_SENSITIVITY,
+                     CONFIG_STATISTICS_CAPACITY: DEF_STATISTICS_CAPACITY}
+        return items
+
+    def set_settings(self, new_settings):
+        self.config_params = new_settings
+        with open(SETTINGS_FILE, 'w+') as my_file:
+            text = '\n'.join([f'{key}={value}' for key, value in self.config_params.items()])
+            my_file.write(text)
+
+    def reset_settings(self):
+        os.remove(SETTINGS_FILE)
+        self._read_settings_file()
+
+    @property
+    def text_size(self):
+        return self._text_size
+
+    @property
+    def ping_sleep_timer(self):
+        return self._ping_sleep_timer
+
+    @property
+    def ping_timeout(self):
+        return self._ping_timeout
+
+    @property
+    def ping_buffer_size(self):
+        return self._ping_buffer_size
+
+    @property
+    def ping_df_flag(self):
+        return self._ping_df_flag
+
+    @property
+    def ping_ttl(self):
+        return self._ping_ttl
+
+    @property
+    def scroll_sensetivity(self):
+        return self._scroll_sensetivity
+
+    @property
+    def statistics_capacity(self):
+        return self._statistics_capacity
+
+    @property
+    def ping_command(self):
+        return 'ping -n 1 -l {} {} -i {} -w {}'.format(self.ping_buffer_size,
+                                                       "-f" if self.ping_df_flag else "",
+                                                       self.ping_ttl,
+                                                       self.ping_timeout * 1000)
+
+    @property
+    def config_params(self):
+        return {CONFIG_TEXT_SIZE: self.text_size,
+                CONFIG_SLEEP_TIMER: self.ping_sleep_timer,
+                CONFIG_TIMEOUT: self.ping_timeout,
+                CONFIG_BUFFER_SIZE: self.ping_buffer_size,
+                CONFIG_DF_FLAG: self.ping_df_flag,
+                CONFIG_TTL: self.ping_ttl,
+                CONFIG_SCROLL_SENSITIVITY: self.scroll_sensetivity,
+                CONFIG_STATISTICS_CAPACITY: self.statistics_capacity}
+
+    @config_params.setter
+    def config_params(self, config_params):
+        self._text_size = config_params[CONFIG_TEXT_SIZE]
+        self._ping_sleep_timer = config_params[CONFIG_SLEEP_TIMER]
+        self._ping_timeout = config_params[CONFIG_TIMEOUT]
+        self._ping_buffer_size = config_params[CONFIG_BUFFER_SIZE]
+        self._ping_df_flag = config_params[CONFIG_DF_FLAG]
+        self._ping_ttl = config_params[CONFIG_TTL]
+        self._scroll_sensetivity = config_params[CONFIG_SCROLL_SENSITIVITY]
+        self._statistics_capacity = config_params[CONFIG_STATISTICS_CAPACITY]
+
+
+settings = Settings()
+
 
 class Text:
-    def __init__(self, master, text, pos, color=DEF_TEXT_COLOR, bg_color=DEF_TEXT_BG_COLOR, size=DEF_TEXT_SIZE):
+    def __init__(self, master, text, pos, color=DEF_TEXT_COLOR, bg_color=DEF_TEXT_BG_COLOR, size=settings.text_size):
         self._text = text
         self._color = color
         self._size = size
@@ -147,14 +260,15 @@ class Text:
 
 
 class Button(Text):
-    def __init__(self, master, text, pos, func, color=DEF_TEXT_COLOR, bg_color=DEF_TEXT_BG_COLOR, size=DEF_TEXT_SIZE):
+    def __init__(self, master, text, pos, func, color=DEF_TEXT_COLOR, bg_color=DEF_TEXT_BG_COLOR,
+                 size=settings.text_size):
         super(Button, self).__init__(master, text, pos, color, bg_color, size)
         self._func = func
         self._widget = tk.Button(master, text=text, fg=color, bg=bg_color, command=func, font=self._font)
 
 
 class InputBox(Text):
-    def __init__(self, master, text, pos, color=BLACK, bg_color=DEF_TEXT_BG_COLOR, size=DEF_TEXT_SIZE):
+    def __init__(self, master, text, pos, color=BLACK, bg_color=DEF_TEXT_BG_COLOR, size=settings.text_size):
         super(InputBox, self).__init__(master, text, pos, color, bg_color, size)
         self._widget = tk.Entry(master, fg=GRAY, bg=bg_color, font=self._font)
         self._widget.insert(0, text)
@@ -231,9 +345,8 @@ class Table:
 
 
 class PingTable(Table):
-    def __init__(self, master: tk.Misc, pos, settings):
+    def __init__(self, master: tk.Misc, pos):
         super(PingTable, self).__init__(master, ('Host Name', 'Ip Address', 'Status', 'Statistics (%)'), pos)
-        self._settings = settings
         self._master.after(100, self._check_pingers)
         self._ping_threads: List[threading.Thread] = []
         self._item_indexes: Dict[str, PingTableLine] = {}
@@ -282,8 +395,8 @@ class PingTable(Table):
             self._tree.selection_set([])
         elif event.keycode == KEYCODE_DELETE:
             self._remove_cmd()
-        else:
-            print(event)
+        # else:
+        #     print(event)
 
     def add(self, host_name_and_ip_address):
         name, ip = host_name_and_ip_address
@@ -294,7 +407,7 @@ class PingTable(Table):
 
         self._have_changed = True
 
-        thread = threading.Thread(target=pinger_thread, args=[new_line, self._settings])
+        thread = threading.Thread(target=pinger_thread, args=[new_line])
         self._ping_threads.append(thread)
         thread.start()
 
@@ -320,7 +433,7 @@ class PingTable(Table):
             self._submit_updates(*line.values)
             line.add_data_to_window()
         self._tree.selection_set(selections)
-        self._master.after(500 * PING_SLEEP_TIMER, self._check_pingers)
+        self._master.after(500 * settings.ping_sleep_timer, self._check_pingers)
 
     @property
     def items(self):
@@ -334,7 +447,7 @@ class Statistics:
 
     def __iadd__(self, other):
         value = 1 if other else 0
-        if len(self._values) < STATISTICS_CAPACITY:
+        if len(self._values) < settings.statistics_capacity:
             self._values.append(value)
         else:
             self._values[self._index] = value
@@ -474,18 +587,106 @@ class PingTableLine:
         self._is_alive = False
 
 
+class IntInputBox(InputBox):
+    def __init__(self, master, text, pos, color=BLACK, bg_color=DEF_TEXT_BG_COLOR, size=settings.text_size):
+        super(IntInputBox, self).__init__(master, text, pos, color, bg_color, size)
+        vcmd = (master.register(self.validate), '%d', '%i', '%P', '%s', '%S', '%v', '%V', '%W')
+        self._widget.config(validatecommand=vcmd)
+        self._changed = True
+        self._widget.config(foreground=self._color)
+
+    @staticmethod
+    def validate(value_if_allowed):
+        if value_if_allowed:
+            try:
+                float(value_if_allowed)
+                return True
+            except ValueError:
+                return False
+        else:
+            return True
+
+    @property
+    def value(self):
+        v = self._widget.get()
+        if v:
+            return int(v)
+        return 0
+
+
+class SettingsWindow:
+    def __init__(self, master, menu):
+        self._master = master
+        self._menu = menu
+
+        self._my_window = tk.Toplevel(master=master)
+        self._my_window.resizable(True, False)
+        self._my_window.title('Settings')
+        self._my_window.grid_columnconfigure(0, weight=1)
+        self._my_window.grid_columnconfigure(1, weight=1)
+        self._my_window.grid_rowconfigure(0, weight=1)
+        self._my_window.protocol('WM_DELETE_WINDOW', self._close_cmd)
+
+        self._param_frame = tk.Frame(self._my_window, bg=BLACK)
+        self._param_frame.grid(row=0, column=0, sticky=tk.NSEW)
+        self._param_frame.grid_columnconfigure(0, weight=1)
+
+        self._value_frame = tk.Frame(self._my_window, bg=BLACK)
+        self._value_frame.grid(row=0, column=1, sticky=tk.NSEW)
+        self._value_frame.grid_columnconfigure(0, weight=1)
+
+        self._items: Dict[str, IntInputBox] = {}
+        for i, (key, value) in enumerate(settings.config_params.items()):
+            self._param_frame.grid_rowconfigure(i, weight=1)
+            self._value_frame.grid_rowconfigure(i, weight=1)
+
+            Text(self._param_frame, key, (i, 0)).draw(padx=2, pady=2, sticky=tk.EW)
+
+            param_value = IntInputBox(self._value_frame, value, (i, 0))
+            param_value.draw(padx=2, pady=2, sticky=tk.EW)
+            self._items[key] = param_value
+
+        self._buttons_frame = tk.Frame(self._my_window, bg=RED)
+        self._buttons_frame.grid(row=1, column=0, columnspan=2, sticky=tk.NSEW)
+        self._buttons_frame.grid_columnconfigure(0, weight=1)
+        self._buttons_frame.grid_columnconfigure(1, weight=1)
+        self._buttons_frame.grid_columnconfigure(2, weight=1)
+
+        self._cancel_btn = Button(self._buttons_frame, 'cancel', (0, 0), self._close_cmd)
+        self._cancel_btn.draw(sticky=tk.EW)
+        self._submit_btn = Button(self._buttons_frame, 'submit', (0, 1), self._submit_cmd)
+        self._submit_btn.draw(sticky=tk.EW)
+        self._reset_btn = Button(self._buttons_frame, 'reset', (0, 2), self._reset_cmd)
+        self._reset_btn.draw(sticky=tk.EW)
+
+    def _close_cmd(self):
+        self._menu.window_closed()
+        self._my_window.destroy()
+
+    def _submit_cmd(self):
+        settings.set_settings({key: value.value for key, value in self._items.items()})
+        self._close_cmd()
+
+    def _reset_cmd(self):
+        settings.reset_settings()
+        self._close_cmd()
+
+    def focus_set(self):
+        self._my_window.focus_set()
+
+
 class Menu:
     def __init__(self, master, table: PingTable):
-        self._file_name = ''
+        self._master = master
         self._table = table
-        self._main_menu = tk.Menu(master, tearoff=False)
-        master.config(menu=self._main_menu)
 
+        self._file_name = ''
+        self._settings_win: Optional[SettingsWindow] = None
+
+        self._main_menu = tk.Menu(master, tearoff=False)
         self._file_menu = tk.Menu(self._main_menu, tearoff=False)
-        self._settings_menu = tk.Menu(self._main_menu, tearoff=False)
 
         self._main_menu.add_cascade(label='file', menu=self._file_menu)
-        self._main_menu.add_cascade(label='settings', menu=self._settings_menu)
 
         self._file_menu.add_command(label='open', command=self.open_file_cmd)
         self._file_menu.add_command(label='new', command=self.new_file_cmd)
@@ -494,7 +695,9 @@ class Menu:
         self._file_menu.entryconfig('save', state='normal' if self._file_name else 'disable')
         self._file_menu.add_command(label='save as', command=self.save_as_file_cmd)
 
-        self._settings_menu.add_command(label='text size', command=self._text_size_cmd)
+        self._main_menu.add_command(label='settings', command=self._open_settings_win)
+
+        master.config(menu=self._main_menu)
 
     @property
     def file_name(self):
@@ -545,8 +748,13 @@ class Menu:
             return True
         return False
 
-    def _text_size_cmd(self):
-        pass
+    def window_closed(self):
+        self._settings_win = None
+
+    def _open_settings_win(self):
+        if not self._settings_win:
+            self._settings_win = SettingsWindow(self._master, self)
+        self._settings_win.focus_set()
 
 
 class AddDataFrame:
@@ -599,10 +807,10 @@ def check_keyboard(key_event: tk.Event):
     return active_keys
 
 
-def pinger_thread(table_line: PingTableLine, settings: Settings):
+def pinger_thread(table_line: PingTableLine):
     ip = table_line.ip_address
     while settings.running and table_line.is_alive:
-        output = subprocess.getoutput(f'{PING_COMMAND} {ip}')
+        output = subprocess.getoutput(f'{settings.ping_command} {ip}')
         output = output.split('\n')[2].lower()
         have_answer = [error_msg for error_msg in ERROR_MSGS if error_msg in output] == []
         if have_answer:
@@ -620,11 +828,11 @@ def pinger_thread(table_line: PingTableLine, settings: Settings):
         time_str = datetime.datetime.now().strftime('%d.%m.%y %H:%M:%S')
         table_line.add_data(f'{time_str} -> {output}', color)
         table_line.update_line(color)
-        time.sleep(PING_SLEEP_TIMER)
+        time.sleep(settings.ping_sleep_timer)
         while table_line.pause and settings.running and table_line.is_alive:
             color = GRAY
             table_line.update_line(color)
-            time.sleep(PING_SLEEP_TIMER)
+            time.sleep(settings.ping_sleep_timer)
 
 
 def valid_ip(ip):
@@ -655,7 +863,7 @@ def ask_for_save(table, main_menu):
     return True
 
 
-def do_quit(root, settings, table, main_menu):
+def do_quit(root, table, main_menu):
     if ask_for_save(table, main_menu):
         settings.running = False
         table.join()
@@ -672,10 +880,10 @@ def init_root():
 
 def main():
     root = init_root()
-    ttk.Style().configure("Treeview.Heading", font=(DEF_TEXT_FONT, DEF_TEXT_SIZE * 2, 'bold'))
-    ttk.Style().configure("Treeview", font=(DEF_TEXT_FONT, DEF_TEXT_SIZE, 'bold'), rowheight=DEF_TEXT_SIZE * 2)
-    settings = Settings()
-    table = PingTable(root, (1, 0), settings)
+    ttk.Style().configure("Treeview.Heading", font=(DEF_TEXT_FONT, settings.text_size * 2, 'bold'))
+    ttk.Style().configure("Treeview", font=(DEF_TEXT_FONT, settings.text_size, 'bold'),
+                          rowheight=settings.text_size * 2)
+    table = PingTable(root, (1, 0))
     # for i in range(255):
     #     table.add(('hi', f'{i}.{i}.{i}.{i}'))
     main_menu = Menu(root, table)
@@ -686,7 +894,7 @@ def main():
     tk.Label(blank_frame, text='').pack()
     credit_label = tk.Label(root, text='Pinger++ by Yuval Kalanthroff', bd=1, relief=tk.SUNKEN)
     credit_label.place(relx=0.5, rely=1.0, anchor='s', relwidth=1.0)
-    root.protocol('WM_DELETE_WINDOW', lambda: do_quit(root, settings, table, main_menu))
+    root.protocol('WM_DELETE_WINDOW', lambda: do_quit(root, table, main_menu))
     tk.mainloop()
 
 

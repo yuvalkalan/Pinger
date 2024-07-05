@@ -1,32 +1,35 @@
-import time
 import tkinter as tk
-from tkinter import ttk
 
+class window2:
+    def __init__(self, master1: tk.Tk):
+        self.panel2 = tk.Frame(master1)
+        self.panel2.grid()
+        self.button2 = tk.Button(self.panel2, text = "Quit", command = self.panel2.quit)
+        self.button2.grid()
+        vcmd = (self.panel2.register(self.validate), '%d', '%i', '%P', '%s', '%S', '%v', '%V', '%W')
+        self.text1 = tk.Entry(self.panel2, validate = 'key', validatecommand=vcmd)
+        self.text1.grid()
+        self.text1.focus()
 
-class Example(tk.Frame):
-    def __init__(self, *args, **kwargs):
-        tk.Frame.__init__(self, *args, **kwargs)
+    def validate(self, action, index, value_if_allowed, prior_value, text, validation_type, trigger_type, widget_name):
+        print('action:',action,
+              'index:',index,
+              'value_if_allowed:',value_if_allowed,
+              'prior_value:',prior_value,
+              'text:',text,
+              'validation_type:',validation_type,
+              'trigger_type:',trigger_type,
+              'widget_name:', widget_name)
 
-        self.text = tk.Text(self, height=6, width=40)
-        self.vsb = tk.Scrollbar(self, orient="vertical", command=self.text.yview)
-        self.text.configure(yscrollcommand=self.vsb.set)
-        self.vsb.pack(side="right", fill="y")
-        self.text.pack(side="left", fill="both", expand=True)
-        self.check_btn_v = tk.IntVar()
-        self.check_button = tk.Checkbutton(self, text="auto scroll", variable=self.check_btn_v)
-        self.check_button.pack(side=tk.TOP)
+        if value_if_allowed:
+            try:
+                float(value_if_allowed)
+                return True
+            except ValueError:
+                return False
+        else:
+            return True
 
-        self.add_timestamp()
-
-    def add_timestamp(self):
-        self.text.insert("end", time.ctime() + "\n")
-        if self.check_btn_v.get():
-            self.text.see("end")
-        self.after(1000, self.add_timestamp)
-
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    frame = Example(root)
-    frame.pack(fill="both", expand=True)
-    root.mainloop()
+root1 = tk.Tk()
+window2(root1)
+root1.mainloop()
