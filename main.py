@@ -127,6 +127,7 @@ class Settings:
         self._tree_head_stl = None
         self._tree_body_stl = None
         self._normal_text_stl = None
+        self._table_adder = 0
 
         self._text_size = None
         self._ping_sleep_timer = None
@@ -158,6 +159,12 @@ class Settings:
     @property
     def normal_text_stl(self):
         return self._normal_text_stl
+
+    @property
+    def table_adder(self):
+        last = self._table_adder
+        self._table_adder = (self._table_adder + 1) % self._num_of_tables
+        return last
 
     @staticmethod
     def _read_settings_file():
@@ -372,6 +379,7 @@ class Table:
         row, column = pos
         # make table resizable
         master.grid_rowconfigure(row, weight=1)
+        master.grid_columnconfigure(column, weight=1)
         self._master = master
         self._frame = tk.Frame(master)
         self._frame.grid_columnconfigure(0, weight=1)
@@ -759,12 +767,18 @@ class EditRow:
 
         self._my_window = tk.Toplevel(self._master)
         self._my_window.title(f'edit {line.host_name} ({line.ip_address})')
+        self._my_window.wm_minsize(150, 50)
+        self._my_window.grid_rowconfigure(0, weight=1)
+        self._my_window.grid_rowconfigure(1, weight=1)
+        self._my_window.grid_columnconfigure(0, weight=1)
+        self._my_window.grid_columnconfigure(1, weight=1)
+
         self._name_input = InputBox(self._my_window, 'Host Name', (0, 0))
-        self._name_input.draw()
+        self._name_input.draw(sticky=tk.NSEW)
         self._ip_input = InputBox(self._my_window, 'Ip Address', (0, 1))
-        self._ip_input.draw()
+        self._ip_input.draw(sticky=tk.NSEW)
         self._submit_btn = Button(self._my_window, 'submit', (1, 0), self._edit_cmd)
-        self._submit_btn.draw()
+        self._submit_btn.draw(columnspan=2, sticky=tk.NSEW)
 
     @property
     def _valid_data(self):
@@ -921,9 +935,9 @@ class SettingsWindow:
 
 
 class Menu:
-    def __init__(self, master, table: PingTable):
+    def __init__(self, master, tables: List[PingTable]):
         self._master = master
-        self._table = table
+        self._tables = tables
 
         self._file_name = ''
         self._settings_win: Optional[SettingsWindow] = None
@@ -949,14 +963,15 @@ class Menu:
         return self._file_name
 
     def new_file_cmd(self):
-        if ask_for_save(self._table, self):
+        if ask_for_save(self._tables, self):
             self._file_name = ''
-            self._table.reset()
+            for table in self._tables:
+                table.reset()
             self._file_menu.entryconfig('save', state='disable')
 
     def open_file_cmd(self):
         last_file_name = self._file_name
-        if ask_for_save(self._table, self):
+        if ask_for_save(self._tables, self):
             self._file_name = fd.askopenfilename(title='Open File', filetypes=FILE_TYPES, defaultextension='.pngr')
             if self._file_name:
                 try:
@@ -967,10 +982,12 @@ class Menu:
                     for item in content:
                         if len(item) != 2:
                             raise ValueError
-                    self._table.reset()
+                    for table in self._tables:
+                        table.reset()
                     for item in content:
-                        self._table.add(item)
-                    self._table.have_changed = False
+                        self._tables[settings.table_adder].add(item)
+                    for table in self._tables:
+                        table.have_changed = False
                     self._file_menu.entryconfig('save', state='normal')
                     return True
                 except Exception as e:
@@ -981,20 +998,26 @@ class Menu:
     def save_file_cmd(self):
         if self._file_name:
             with open(self._file_name, 'w+') as my_file:
-                for host, ip in self._table.items:
+                table_items = [table.items for table in self._tables]
+                for items in table_items:
+                    if len(table_items[0]) != len(items):
+                        items.append((None, None))
+                items = []
+                for item_group in zip(*table_items):
+                    for item in item_group:
+                        if item != (None, None):
+                            items.append(item)
+                for host, ip in items:
                     my_file.write(f'{host}->{ip}\n')
-            self._table.have_changed = False
+            for table in self._tables:
+                table.have_changed = False
             return True
         return False
 
     def save_as_file_cmd(self):
         self._file_name = fd.asksaveasfilename(title='Save File', filetypes=FILE_TYPES, defaultextension='.pngr')
-        if self._file_name:
-            with open(self._file_name, 'w+') as my_file:
-                for host, ip in self._table.items:
-                    my_file.write(f'{host}->{ip}\n')
+        if self.save_file_cmd():
             self._file_menu.entryconfig('save', state='normal')
-            self._table.have_changed = False
             return True
         return False
 
@@ -1014,10 +1037,12 @@ class Menu:
                 content = my_file.read()
             content = content.split('\n')[:-1]
             content = [item.split('->') for item in content]
-            self._table.reset()
+            for table in self._tables:
+                table.reset()
             for item in content:
-                self._table.add(item)
-            self._table.have_changed = False
+                self._tables[settings.table_adder].add(item)
+            for table in self._tables:
+                table.have_changed = False
             self._file_menu.entryconfig('save', state='normal')
             return True
         except Exception as e:
@@ -1026,10 +1051,10 @@ class Menu:
 
 
 class AddDataFrame:
-    def __init__(self, master: tk.Misc, pos, table: PingTable):
+    def __init__(self, master: tk.Misc, pos, tables: List[PingTable]):
         self._master = master
         self._pos = pos
-        self._table = table
+        self._tables = tables
         self._frame = tk.Frame(self._master)
         self._name_input = InputBox(self._frame, 'Host Name', (0, 0))
         self._ip_input = InputBox(self._frame, 'Ip Address', (0, 1))
@@ -1039,7 +1064,7 @@ class AddDataFrame:
 
     def _submit_func(self):
         if self._valid_data:
-            self._table.add((self._name_input.value, self._ip_input.value))
+            self._tables[settings.table_adder].add((self._name_input.value, self._ip_input.value))
             self._master.focus_set()
             self._name_input.reset_text()
             self._ip_input.reset_text()
@@ -1078,9 +1103,13 @@ def check_keyboard(key_event: tk.Event):
 def pinger_thread(table_line: PingTableLine):
     while settings.running and table_line.is_alive:
         ip = table_line.ip_address
-        output = subprocess.getoutput(f'{settings.ping_command} {ip}')
-        output = output.split('\n')[2].lower()
-        have_answer = [error_msg for error_msg in ERROR_MSGS if error_msg in output] == []
+        try:
+            output = subprocess.getoutput(f'{settings.ping_command} {ip}')
+            output = output.split('\n')[2].lower()
+            have_answer = [error_msg for error_msg in ERROR_MSGS if error_msg in output] == []
+        except Exception as e:
+            have_answer = False
+            output = str(e)
         if have_answer:
             params = output.split(': ')[1].split(' ')
             items = []
@@ -1116,8 +1145,8 @@ def valid_ip(ip):
         return False
 
 
-def ask_for_save(table, main_menu):
-    if table.have_changed:
+def ask_for_save(tables, main_menu):
+    if [table for table in tables if table.have_changed]:
         msg_box = msgbox.askyesnocancel('Save Changes', 'Do you want to save changes?')
         if msg_box in [True, False]:
             if msg_box is True:
@@ -1131,10 +1160,11 @@ def ask_for_save(table, main_menu):
     return True
 
 
-def do_quit(root, table, main_menu):
-    if ask_for_save(table, main_menu):
+def do_quit(root, tables, main_menu):
+    if ask_for_save(tables, main_menu):
         settings.running = False
-        table.join()
+        for table in tables:
+            table.join()
         root.destroy()
 
 
@@ -1142,27 +1172,26 @@ def init_root():
     root = tk.Tk()
     # root.geometry(SCREEN_SIZE)
     root.title(SCREEN_TITLE)
-    root.grid_columnconfigure(0, weight=1)
     return root
 
 
 def main():
     root = init_root()
     settings.add_root(root)
-    table = PingTable(root, (1, 0))
-    # for i in range(255):
-    #     table.add(('hi', f'{i}.{i}.{i}.{i}'))
-    main_menu = Menu(root, table)
+    tables = [PingTable(root, (1, i)) for i in range(settings.num_of_tables)]
+    main_menu = Menu(root, tables)
     if len(sys.argv) != 1:
         main_menu.set_file(sys.argv[1])
-    add_data_frame = AddDataFrame(root, (0, 0), table)
+    # for i in range(255):
+    #     tables[settings.table_adder].add(('hi', f'{i}.{i}.{i}.{i}'))
+    add_data_frame = AddDataFrame(root, (0, 0), tables)
     add_data_frame.draw()
     blank_frame = tk.Frame(root)
     blank_frame.grid(row=2, column=0)
     tk.Label(blank_frame, text='').pack()
     credit_label = tk.Label(root, text='Pinger++ by Yuval Kalanthroff', bd=1, relief=tk.SUNKEN)
     credit_label.place(relx=0.5, rely=1.0, anchor='s', relwidth=1.0)
-    root.protocol('WM_DELETE_WINDOW', lambda: do_quit(root, table, main_menu))
+    root.protocol('WM_DELETE_WINDOW', lambda: do_quit(root, tables, main_menu))
     tk.mainloop()
 
 
