@@ -1,4 +1,5 @@
 import datetime
+import sys
 import subprocess
 import threading
 import time
@@ -792,6 +793,7 @@ class Menu:
             self._file_menu.entryconfig('save', state='disable')
 
     def open_file_cmd(self):
+        last_file_name = self._file_name
         if ask_for_save(self._table, self):
             self._file_name = fd.askopenfilename(title='Open File', filetypes=FILE_TYPES, defaultextension='.pngr')
             if self._file_name:
@@ -800,6 +802,9 @@ class Menu:
                         content = my_file.read()
                     content = content.split('\n')[:-1]
                     content = [item.split('->') for item in content]
+                    for item in content:
+                        if len(item) != 2:
+                            raise ValueError
                     self._table.reset()
                     for item in content:
                         self._table.add(item)
@@ -808,6 +813,7 @@ class Menu:
                     return True
                 except Exception as e:
                     msgbox.showerror('Error!', f'can\'t open file! {e}')
+                    self._file_name = last_file_name
         return False
 
     def save_file_cmd(self):
@@ -820,9 +826,9 @@ class Menu:
         return False
 
     def save_as_file_cmd(self):
-        filename = fd.asksaveasfilename(title='Save File', filetypes=FILE_TYPES, defaultextension='.pngr')
-        if filename:
-            with open(filename, 'w+') as my_file:
+        self._file_name = fd.asksaveasfilename(title='Save File', filetypes=FILE_TYPES, defaultextension='.pngr')
+        if self._file_name:
+            with open(self._file_name, 'w+') as my_file:
                 for host, ip in self._table.items:
                     my_file.write(f'{host}->{ip}\n')
             self._file_menu.entryconfig('save', state='normal')
@@ -837,6 +843,24 @@ class Menu:
         if not self._settings_win:
             self._settings_win = SettingsWindow(self._master, self)
         self._settings_win.focus_set()
+
+    def set_file(self, file_name):
+        last_file_name = self._file_name
+        self._file_name = file_name
+        try:
+            with open(self._file_name, 'r') as my_file:
+                content = my_file.read()
+            content = content.split('\n')[:-1]
+            content = [item.split('->') for item in content]
+            self._table.reset()
+            for item in content:
+                self._table.add(item)
+            self._table.have_changed = False
+            self._file_menu.entryconfig('save', state='normal')
+            return True
+        except Exception as e:
+            msgbox.showerror('Error!', f'can\'t open file! {e}')
+            self._file_name = last_file_name
 
 
 class AddDataFrame:
@@ -967,6 +991,8 @@ def main():
     # for i in range(255):
     #     table.add(('hi', f'{i}.{i}.{i}.{i}'))
     main_menu = Menu(root, table)
+    if len(sys.argv) != 1:
+        main_menu.set_file(sys.argv[1])
     add_data_frame = AddDataFrame(root, (0, 0), table)
     add_data_frame.draw()
     blank_frame = tk.Frame(root)
