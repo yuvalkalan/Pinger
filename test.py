@@ -39,6 +39,8 @@ from tkinter.ttk import *
 
 
 def main():
+    for i in range(9, 10):
+        print(i)
     root = Tk()
     tree = Treeview(root, selectmode="extended", columns=("A", "B"))
     tree.pack(expand=YES, fill=BOTH)

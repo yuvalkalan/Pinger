@@ -799,7 +799,7 @@ class SettingsWindow:
         self._master = master
         self._menu = menu
 
-        self._my_window = tk.Toplevel(master=master)
+        self._my_window = tk.Toplevel(master)
         self._my_window.resizable(True, False)
         self._my_window.title('Settings')
         self._my_window.grid_columnconfigure(0, weight=1)
@@ -808,7 +808,6 @@ class SettingsWindow:
         self._my_window.protocol('WM_DELETE_WINDOW', self._close_cmd)
         self._my_window.bind('<Return>', self._submit_cmd)
         self._my_window.bind('<Escape>', self._close_cmd)
-        self._my_window.bind('<Delete>', self._reset_cmd)
 
         self._param_frame = tk.Frame(self._my_window, bg=Color.BLACK)
         self._param_frame.grid(row=0, column=0, sticky=tk.NSEW)
@@ -832,7 +831,7 @@ class SettingsWindow:
             param_value.draw(padx=2, pady=2, sticky=tk.EW)
             self._items[key] = param_value
 
-        self._buttons_frame = tk.Frame(self._my_window, bg=Color.RED)
+        self._buttons_frame = tk.Frame(self._my_window)
         self._buttons_frame.grid(row=1, column=0, columnspan=2, sticky=tk.NSEW)
         self._buttons_frame.grid_columnconfigure(0, weight=1)
         self._buttons_frame.grid_columnconfigure(1, weight=1)
@@ -846,7 +845,7 @@ class SettingsWindow:
         self._reset_btn.draw(sticky=tk.EW)
 
     def _close_cmd(self, *_):
-        self._menu.window_closed()
+        self._menu.settings_closed()
         self._my_window.destroy()
 
     def _submit_cmd(self, *_):
@@ -865,6 +864,55 @@ class SettingsWindow:
         self._my_window.focus_set()
 
 
+class AutoInsertWin:
+    def __init__(self, master, menu):
+        self._master = master
+        self._menu = menu
+
+        self._my_window = tk.Toplevel(master)
+        self._my_window.resizable(True, False)
+        self._my_window.title('Auto Insert')
+        self._my_window.protocol('WM_DELETE_WINDOW', self._close_cmd)
+        self._my_window.grid_columnconfigure(0, weight=1)
+        self._my_window.grid_rowconfigure(0, weight=1)
+
+        self._main_frame = tk.Frame(self._my_window, bg=Color.BLACK)
+        self._main_frame.grid(row=0, column=0, sticky=tk.NSEW)
+        for i in range(4):
+            self._main_frame.grid_columnconfigure(i, weight=1)
+
+        self._title = Text(self._main_frame, 'Enter IP Range:', (0, 0))
+        self._title.draw(sticky=tk.EW, columnspan=4)
+        self._start_ip = [IntInputBox(self._main_frame, '0', (1, i), 0, 255) for i in range(4)]
+        for box in self._start_ip:
+            box.draw(sticky=tk.EW, padx=2, pady=2)
+
+        self._end_ip = [IntInputBox(self._main_frame, '255', (2, i), 0, 255) for i in range(4)]
+        for box in self._end_ip:
+            box.draw(sticky=tk.EW, padx=2, pady=2)
+
+        self._buttons_frame = tk.Frame(self._my_window, bg=Color.BLACK)
+        self._buttons_frame.grid(row=1, column=0, sticky=tk.NSEW)
+        self._buttons_frame.grid_columnconfigure(0, weight=1)
+        self._buttons_frame.grid_columnconfigure(1, weight=1)
+
+        self._cancel_btn = Button(self._buttons_frame, 'cancel', (0, 0), self._close_cmd)
+        self._cancel_btn.draw(sticky=tk.EW)
+        self._submit_btn = Button(self._buttons_frame, 'submit', (0, 1), self._submit_cmd)
+        self._submit_btn.draw(sticky=tk.EW)
+
+    def focus_set(self):
+        self._my_window.focus_set()
+
+    def _close_cmd(self, *_):
+        self._menu.auto_insert_closed()
+        self._my_window.destroy()
+
+    def _submit_cmd(self):
+        self._menu.auto_insert([item.value for item in self._start_ip], [item.value for item in self._end_ip])
+        self._close_cmd()
+
+
 class Menu:
     def __init__(self, master, tables: List[PingTable]):
         self._master = master
@@ -872,6 +920,7 @@ class Menu:
 
         self._file_name = ''
         self._settings_win: Optional[SettingsWindow] = None
+        self._auto_insert_win: Optional[AutoInsertWin] = None
 
         self._main_menu = tk.Menu(master, tearoff=False)
         self._file_menu = tk.Menu(self._main_menu, tearoff=False)
@@ -885,7 +934,8 @@ class Menu:
         self._file_menu.entryconfig('save', state='normal' if self._file_name else 'disable')
         self._file_menu.add_command(label='save as', command=self.save_as_file_cmd)
 
-        self._main_menu.add_command(label='settings', command=self._open_settings_win)
+        self._main_menu.add_command(label='settings', command=self._open_settings_cmd)
+        self._main_menu.add_command(label='auto insert', command=self._auto_insert_cmd)
 
         master.config(menu=self._main_menu)
 
@@ -963,13 +1013,28 @@ class Menu:
     def _set_title(self):
         self._master.title(os.path.basename(self._file_name))
 
-    def window_closed(self):
+    def settings_closed(self):
         self._settings_win = None
 
-    def _open_settings_win(self):
+    def _open_settings_cmd(self):
         if not self._settings_win:
             self._settings_win = SettingsWindow(self._master, self)
         self._settings_win.focus_set()
+
+    def auto_insert_closed(self):
+        self._auto_insert_win = None
+
+    def _auto_insert_cmd(self):
+        if not self._auto_insert_win:
+            self._auto_insert_win = AutoInsertWin(self._master, self)
+        self._auto_insert_win.focus_set()
+
+    def auto_insert(self, start_ip, end_ip):
+        for a in range(start_ip[0], end_ip[0] + 1):
+            for b in range(start_ip[1], end_ip[1] + 1):
+                for c in range(start_ip[2], end_ip[2] + 1):
+                    for d in range(start_ip[3], end_ip[3] + 1):
+                        self._tables[settings.table_adder].add(('auto', f'{a}.{b}.{c}.{d}'))
 
 
 class AddDataFrame:
