@@ -2,6 +2,9 @@ import string
 import tkinter as tk
 
 
+REVERSE = {'(': ')', ')': '('}
+
+
 def is_both(char):
     return char == ' ' or '0' <= char <= '9' or char in string.punctuation
 
@@ -29,23 +32,25 @@ def move_punctuations(s: str):
             end_spaces += char
         else:
             break
-    return end_spaces + s.lstrip(start_spaces).rstrip(end_spaces) + start_spaces
+    new_start = ''.join([REVERSE[c] if c in REVERSE else c for c in end_spaces])
+    new_end = ''.join([REVERSE[c] if c in REVERSE else c for c in start_spaces])
+    return new_start + s.lstrip(start_spaces).rstrip(end_spaces) + new_end
 
 
-def hebrew_reshaper(text):
+def hebrew_reshaper(text: str):
     sub_texts = text.split('\n')
     new_strings = []
-    for text in sub_texts:
-        if not text:
+    for sub_text in sub_texts:
+        if not sub_text:
             new_strings.append('')
             continue
 
         breaks = []
-        is_current_hebrew = not is_english(text[0])
+        is_current_hebrew = not is_english(sub_text[0])
         contain_hebrew = is_current_hebrew
         current_text = ''
 
-        for char in text:
+        for char in sub_text:
             if is_current_hebrew:
                 if is_hebrew(char):
                     current_text += char
@@ -67,15 +72,20 @@ def hebrew_reshaper(text):
         if contain_hebrew:
             for i in range(len(breaks)):
                 part, is_heb = breaks[i]
+                if part.endswith(')') and not is_heb:
+                    print(True)
+                    part = '(' + part[:-1]
                 part = move_punctuations(part)
+
                 breaks[i] = (part, is_heb)
-        new_strings.append(''.join([part for part, _ in breaks]))
+        new_string = ''.join([part for part, _ in breaks])
+        new_strings.append(new_string)
     return '\n'.join(new_strings)
 
 
 def main():
     root = tk.Tk()
-    text = '-=-=asdf82this is full english!@#'
+    text = ""
     text = hebrew_reshaper(text)
     label = tk.Label(root, text=text)
     label.pack(fill=tk.BOTH)
