@@ -1,8 +1,8 @@
 """
-pinger++ v.19 by Yuval Kalanthroff
-rtl version
-new version - better log, bug fix
-08.08.23
+pinger++ v19.1 by Yuval Kalanthroff
+he + rtl version
+new version - bug fix
+07.07.24
 may the white rotem be with you
 """
 
@@ -24,7 +24,7 @@ def init_root():
     theme = stl.theme_use()
     stl.theme_create('wrapper', parent=theme)
     stl.theme_use('wrapper')
-    stl.map('Treeview', background=[('selected', '#0078d7')])
+    stl.map('Treeview', background=[('selected', SELECTED_COLOR)])
     root.geometry(SCREEN_SIZE)
     root.title(DEF_SCREEN_TITLE)
     return root
