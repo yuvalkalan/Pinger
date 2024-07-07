@@ -1,5 +1,5 @@
 import string
-import tkinter as tk
+# import tkinter as tk
 
 
 REVERSE = {'(': ')', ')': '('}
@@ -18,6 +18,10 @@ def is_english(char):
 
 
 def move_punctuations(s: str):
+    """
+    this function swipe punctuations from start to end
+    for example: '!@#abc%$#' -> '#$%abc!@#'
+    """
     if not s:
         return s
     start_spaces = ''
@@ -73,24 +77,23 @@ def hebrew_reshaper(text: str):
             for i in range(len(breaks)):
                 part, is_heb = breaks[i]
                 if part.endswith(')') and not is_heb:
-                    print(True)
                     part = '(' + part[:-1]
                 part = move_punctuations(part)
-
                 breaks[i] = (part, is_heb)
         new_string = ''.join([part for part, _ in breaks])
         new_strings.append(new_string)
     return '\n'.join(new_strings)
 
 
-def main():
-    root = tk.Tk()
-    text = ""
-    text = hebrew_reshaper(text)
-    label = tk.Label(root, text=text)
-    label.pack(fill=tk.BOTH)
-    root.mainloop()
+# def main():
+#     """ this is some test code"""
+#     root = tk.Tk()
+#     text = "hello מה)) קורה? WITH YOU!%^ הכל טוב (נראלי)"
+#     text = hebrew_reshaper(text)
+#     label = tk.Label(root, text=text)
+#     label.pack(fill=tk.BOTH)
+#     root.mainloop()
 
 
-if __name__ == '__main__':
-    main()
+# if __name__ == '__main__':
+#     main()
