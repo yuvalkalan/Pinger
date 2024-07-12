@@ -5,19 +5,21 @@ import time
 from ping import PingSocket
 
 
+TABLE_COLORS = [Color.RED, Color.YELLOW, Color.GREEN, Color.ORANGE, Color.GRAY]
+TABLE_HEADERS = ['(%) סטטיסטיקה', 'סטטוס', 'כתובת היעד', 'שם היעד']
+
+
 class PingTable(Table):
     def __init__(self, master: tk.PanedWindow, pos, tables, table_index):
-        super(PingTable, self).__init__(master, ('(%) סטטיסטיקה', 'סטטוס', 'כתובת היעד', 'שם היעד'), pos)
+        super(PingTable, self).__init__(master, TABLE_HEADERS, pos)
         self._master.after(0, self._check_pingers)
         self._tables: List[PingTable] = tables
         self._table_index = table_index
         self._ping_threads: List[threading.Thread] = []
         self._item_indexes: Dict[str, PingTableLine] = {}
 
-        self._tree.tag_configure(Color.GREEN, background=Color.GREEN)
-        self._tree.tag_configure(Color.YELLOW, background=Color.YELLOW)
-        self._tree.tag_configure(Color.RED, background=Color.RED)
-        self._tree.tag_configure(Color.GRAY, background=Color.GRAY)
+        for color in TABLE_COLORS:
+            self._tree.tag_configure(color, background=color)
         self._tree.bind('<Double-Button-1>', self._open_sub_window)
         self._tree.bind('<KeyPress>', self._check_keypress)
 
@@ -314,7 +316,7 @@ class PingTableLine:
         if log_mode and not (settings.log_ignore_dock and log_mode in [LOG_MODE_Y2R, LOG_MODE_R2Y]):
             log.add(self.host_name, log_mode)
         # change color and status
-        if color == Color.GREEN:
+        if color in [Color.GREEN, Color.ORANGE]:
             if self._status == Status.OFFLINE or Status.CALCULATING:
                 self.status = Status.ONLINE
             self._statistics += True
@@ -333,9 +335,8 @@ class PingTableLine:
             self._my_window.protocol('WM_DELETE_WINDOW', self.close_window)
 
             self._text = tk.Text(self._my_window, height=6, width=40)
-            self._text.tag_config(Color.RED, background=Color.RED)
-            self._text.tag_config(Color.YELLOW, background=Color.YELLOW)
-            self._text.tag_config(Color.GREEN, background=Color.GREEN)
+            for color in TABLE_COLORS:
+                self._text.tag_config(color, background=color)
             self._vsb = tk.Scrollbar(self._my_window, orient='vertical', command=self._text.yview)
             self._text.configure(yscrollcommand=self._vsb.set)
             self._vsb.pack(side='right', fill='y')
@@ -876,7 +877,13 @@ def pinger_thread(table_line: PingTableLine, identifier):
         ping_socket.send(settings.ping_buffer_size, settings.ping_ttl, settings.ping_timeout)
         answer, rtt = ping_socket.receive()
         if rtt:
-            color = Color.YELLOW if rtt < settings.min_threshold else Color.GREEN
+            if rtt < settings.min_threshold:
+                color = Color.YELLOW
+            elif rtt < settings.max_threshold:
+                color = Color.GREEN
+            else:
+                color = Color.ORANGE
+            # color = Color.YELLOW if rtt < settings.min_threshold else Color.GREEN
         else:
             color = Color.RED
         time_str = datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S')
