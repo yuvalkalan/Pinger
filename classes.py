@@ -876,7 +876,7 @@ def pinger_thread(table_line: PingTableLine, identifier):
         ping_socket.send(settings.ping_buffer_size, settings.ping_ttl, settings.ping_timeout)
         answer, rtt = ping_socket.receive()
         if rtt:
-            color = Color.YELLOW if rtt < settings.dock_time else Color.GREEN
+            color = Color.YELLOW if rtt < settings.min_threshold else Color.GREEN
         else:
             color = Color.RED
         time_str = datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S')

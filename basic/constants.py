@@ -42,6 +42,7 @@ class Color(BaseEnum):
     WHITE: COLOR = '#FFFFFF'
     YELLOW: COLOR = '#FFFF00'
     GRAY: COLOR = '#808080'
+    ORANGE: COLOR = '#FFA500'
 
 
 class Status(BaseEnum):

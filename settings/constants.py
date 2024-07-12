@@ -9,7 +9,8 @@ class Config(BaseEnum):
     TTL = 'ping ttl'
     STATISTICS_CAPACITY = 'statistics capacity (packets)'
     NUM_OF_TABLES = 'number of tables'
-    DOCK_TIME = 'dock time (ms)'
+    MIN_THRESHOLD = 'min threshold (ms)'
+    MAX_THRESHOLD = 'max threshold (ms)'
     LOG_SAVE = 'save log (hours)'
     LOG_IGNORE_DOCK = 'ignore dock on log (T/F)'
 
@@ -22,7 +23,8 @@ class Default(BaseEnum):
     PING_BUFFER_SIZE = 32
     PING_TTL = 128
     NUM_OF_TABLES = 1
-    DOCK_TIME = 400
+    MIN_THRESHOLD = 400
+    MAX_THRESHOLD = 1000
     LOG_SAVE = 72
     LOG_IGNORE_DOCK = 0
 
@@ -35,7 +37,8 @@ class RangeOf(BaseEnum):
     PING_BUFFER_SIZE = (32, 65500)
     PING_TTL = (1, 255)
     NUM_OF_TABLES = (1, 5)
-    DOCK_TIME = (0, 1000)
+    MIN_THRESHOLD = (0, 1000)
+    MAX_THRESHOLD = (0, 2500)
     LOG_SAVE = (0, 168)
     LOG_IGNORE_DOCK = (0, 1)
 
@@ -47,7 +50,8 @@ DEFAULT_SETTINGS = {Config.TEXT_SIZE: Default.TEXT_SIZE,
                     Config.TTL: Default.PING_TTL,
                     Config.STATISTICS_CAPACITY: Default.STATISTICS_CAPACITY,
                     Config.NUM_OF_TABLES: Default.NUM_OF_TABLES,
-                    Config.DOCK_TIME: Default.DOCK_TIME,
+                    Config.MIN_THRESHOLD: Default.MIN_THRESHOLD,
+                    Config.MAX_THRESHOLD: Default.MAX_THRESHOLD,
                     Config.LOG_SAVE: Default.LOG_SAVE,
                     Config.LOG_IGNORE_DOCK: Default.LOG_IGNORE_DOCK}
 
@@ -58,7 +62,8 @@ RANGE_OF_SETTINGS = {Config.TEXT_SIZE: RangeOf.TEXT_SIZE,
                      Config.TTL: RangeOf.PING_TTL,
                      Config.STATISTICS_CAPACITY: RangeOf.STATISTICS_CAPACITY,
                      Config.NUM_OF_TABLES: RangeOf.NUM_OF_TABLES,
-                     Config.DOCK_TIME: RangeOf.DOCK_TIME,
+                     Config.MIN_THRESHOLD: RangeOf.MIN_THRESHOLD,
+                     Config.MAX_THRESHOLD: RangeOf.MAX_THRESHOLD,
                      Config.LOG_SAVE: RangeOf.LOG_SAVE,
                      Config.LOG_IGNORE_DOCK: RangeOf.LOG_IGNORE_DOCK}
 

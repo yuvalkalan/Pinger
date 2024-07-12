@@ -17,7 +17,8 @@ class Settings:
         self._ping_ttl = None
         self._statistics_capacity = None
         self._num_of_tables = None
-        self._dock_time = None
+        self._min_threshold = None
+        self._max_threshold = None
         self._log_save = None
         self._log_ignore_dock = None
         self.config_params = self._read_settings_file()
@@ -109,8 +110,12 @@ class Settings:
         return self._num_of_tables
 
     @property
-    def dock_time(self):
-        return self._dock_time
+    def min_threshold(self):
+        return self._min_threshold
+
+    @property
+    def max_threshold(self):
+        return self._max_threshold
 
     @property
     def log_save(self):
@@ -129,7 +134,8 @@ class Settings:
                 Config.TTL: self.ping_ttl,
                 Config.STATISTICS_CAPACITY: self.statistics_capacity,
                 Config.NUM_OF_TABLES: self.num_of_tables,
-                Config.DOCK_TIME: self.dock_time,
+                Config.MIN_THRESHOLD: self.min_threshold,
+                Config.MAX_THRESHOLD: self.max_threshold,
                 Config.LOG_SAVE: self._log_save,
                 Config.LOG_IGNORE_DOCK: self._log_ignore_dock}
 
@@ -142,7 +148,8 @@ class Settings:
         self._ping_ttl = config_params[Config.TTL]
         self._statistics_capacity = config_params[Config.STATISTICS_CAPACITY]
         self._num_of_tables = config_params[Config.NUM_OF_TABLES]
-        self._dock_time = config_params[Config.DOCK_TIME]
+        self._min_threshold = config_params[Config.MIN_THRESHOLD]
+        self._max_threshold = config_params[Config.MAX_THRESHOLD]
         self._log_save = config_params[Config.LOG_SAVE]
         self._log_ignore_dock = config_params[Config.LOG_IGNORE_DOCK]
         if self._root:
